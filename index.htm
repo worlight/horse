@@ -20,7 +20,7 @@
             position: relative;
             width: 100vw;
             height: 100vh;
-            background-color: #fdfbf7;
+            background-color: #fdfbf7; /* 宣紙色 */
             background-image: radial-gradient(#e6e6e6 1px, transparent 1px);
             background-size: 20px 20px;
             overflow: hidden;
@@ -53,6 +53,7 @@
             pointer-events: none;
         }
 
+        /* --- 毛筆字動畫樣式 --- */
         .ink-title {
             font-family: 'Ma Shan Zheng', cursive;
             font-size: 5rem; 
@@ -100,6 +101,7 @@
             max-width: 90%;
         }
 
+        /* --- 選單樣式 --- */
         .input-group {
             margin-top: 20px;
             display: flex;
@@ -256,6 +258,7 @@
             text-align: right;
         }
 
+        /* --- 排行榜樣式 --- */
         #leaderboard-layer {
             background: rgba(253, 251, 247, 0.98);
         }
@@ -373,6 +376,7 @@
             </div>
         </div>
 
+        <!-- 排行榜畫面 -->
         <div id="leaderboard-layer" class="ui-layer hidden">
             <h2>🏆 排行榜</h2>
             <p style="margin-bottom: 10px;">誰是真正的千里馬？</p>
@@ -389,8 +393,9 @@
         </div>
     </div>
 
-    <!-- 主要遊戲邏輯 (標準 Script，確保離線可用) -->
+    <!-- 主要遊戲邏輯 -->
     <script>
+        // 1. 初始化全域變數
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -416,8 +421,7 @@
         let spawnTimer = 0;
         let lastTime = 0;
 
-        // 預設的本地儲存介面 (會被雲端模組覆蓋)
-        window.useCloud = false; // 標記是否使用雲端
+        // 預設的本地儲存介面 (將被 Firebase 模組覆蓋)
         window.saveRecordFunc = function(name, distance) {
             let records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
             records.push({ name: name, score: distance, timestamp: new Date().toISOString() });
@@ -443,15 +447,20 @@
             listContainer.innerHTML = html;
         };
 
-        window.showLeaderboardFunc = function() {
+        // 預設使用本地函數，雲端連線成功後會替換
+        window.saveRecord = window.saveRecordFunc;
+        window.showLeaderboard = function() {
             const records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
             window.renderLeaderboard(records);
+            document.getElementById('leaderboard-layer').classList.remove('hidden');
         };
-        
-        window.clearLeaderboardFunc = function() {
-            localStorage.removeItem('horseGame_leaders');
-            alert("已清除本機記錄");
-            window.renderLeaderboard([]);
+        window.closeLeaderboard = function() { document.getElementById('leaderboard-layer').classList.add('hidden'); };
+        window.clearLeaderboard = function() {
+            if(confirm("確定要清除本機記錄嗎？")) {
+                localStorage.removeItem('horseGame_leaders');
+                alert("已清除");
+                window.renderLeaderboard([]);
+            }
         };
 
         // 學生資料
@@ -553,12 +562,6 @@
             reset() { this.x = canvasWidth + Math.random() * 300; this.y = groundHeight + 20; this.height = Math.random() * 200 + 150; this.width = Math.random() * 6 + 4; this.depth = Math.random(); this.speedFactor = 0.5 - (this.depth * 0.2); this.opacity = 0.8 - (this.depth * 0.5); this.leaves = []; let segHeight = 30 + Math.random() * 20; for(let h=50; h<this.height; h+=segHeight) { if(Math.random() > 0.3) { let leafCount = Math.floor(Math.random() * 3) + 2; for(let i=0; i<leafCount; i++) { this.leaves.push({ h: h, angle: (Math.random() * 0.8 - 0.4), length: Math.random() * 25 + 15 }); } } } }
             update() { this.x -= speed * speedMultiplier * this.speedFactor; if (this.x < -50) { this.reset(); } }
             draw() { ctx.save(); ctx.translate(this.x, this.y); ctx.fillStyle = `rgba(45, 60, 45, ${this.opacity})`; ctx.strokeStyle = `rgba(45, 60, 45, ${this.opacity})`; let segHeight = 35; for(let h=0; h<this.height; h+=segHeight) { let localW = this.width - (h/this.height)*2; ctx.fillRect(-localW/2, -h - segHeight, localW, segHeight - 2); ctx.beginPath(); ctx.moveTo(-localW/2 - 2, -h); ctx.lineTo(localW/2 + 2, -h); ctx.lineWidth = 2; ctx.stroke(); } this.leaves.forEach(leaf => { ctx.save(); ctx.translate(0, -leaf.h); ctx.rotate(leaf.angle); ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(leaf.length/2, 5, leaf.length, 0); ctx.quadraticCurveTo(leaf.length/2, -5, 0, 0); ctx.fill(); ctx.restore(); }); ctx.restore(); }
-        }
-        class Bird {
-            constructor() { this.reset(); }
-            reset() { this.x = canvasWidth + Math.random() * 1000; this.y = Math.random() * (canvasHeight * 0.3) + 20; this.speedX = Math.random() * 2 + 2; this.size = Math.random() * 10 + 10; this.wingSpeed = 0.2; this.angle = 0; }
-            update() { this.x -= (speed * 0.5 + this.speedX); this.angle += this.wingSpeed; if(this.x < -50) this.reset(); }
-            draw() { ctx.save(); ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.translate(this.x, this.y); ctx.beginPath(); let wingY = Math.sin(this.angle) * 5; ctx.moveTo(-this.size/2, -wingY); ctx.quadraticCurveTo(0, 5, this.size/2, -wingY); ctx.stroke(); ctx.restore(); }
         }
         class Background {
             constructor() { this.mountains = []; let currentX = 0; while (currentX < canvasWidth + 500) { this.addMountain(currentX); let lastM = this.mountains[this.mountains.length - 1]; currentX = lastM.x + lastM.width - 100; } this.clouds = []; for(let i=0; i<5; i++) this.clouds.push(new Cloud()); this.bamboos = []; for(let i=0; i<12; i++) this.bamboos.push(new Bamboo()); this.birds = []; for(let i=0; i<3; i++) this.birds.push(new Bird()); }
