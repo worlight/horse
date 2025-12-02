@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>水墨奔騰迎錦泰</title>
 
-    <!-- 1. 引入 Firebase Compat SDK (確保在任何環境都能載入) -->
+    <!-- 1. 引入 Firebase Compat SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
@@ -117,7 +117,7 @@
             opacity: 0;
         }
 
-        select, input[type="text"] {
+        select, input[type="text"], input[type="password"] {
             padding: 10px 15px;
             font-size: 1.2rem;
             font-family: 'Noto Serif TC', serif;
@@ -298,6 +298,17 @@
         #leaderboard-layer {
             background: rgba(253, 251, 247, 0.98);
         }
+        
+        /* 密碼輸入框樣式 */
+        #password-modal {
+            background: rgba(0,0,0,0.8);
+            z-index: 20;
+        }
+        
+        #password-modal .idiom-box {
+            width: 300px;
+            text-align: center;
+        }
 
         .leaderboard-container {
             width: 90%;
@@ -380,8 +391,8 @@
             
             <div class="input-group">
                 <select id="class-select"><option value="" disabled selected>請選擇班別</option></select>
-                <!-- 自訂姓名輸入框 -->
-                <input type="text" id="custom-name-input" placeholder="請輸入自訂姓名" maxlength="10">
+                <!-- 自訂姓名輸入框 (允許空白格) -->
+                <input type="text" id="custom-name-input" placeholder="請輸入自訂姓名 (可含空白)" maxlength="15">
                 <select id="student-select" disabled><option value="" disabled selected>請選擇姓名</option></select>
                 <select id="bg-select">
                     <option value="" selected>隨機背景 (預設)</option>
@@ -390,6 +401,8 @@
                     <option value="snow">冬日飄雪</option>
                     <option value="night">月夜流螢</option>
                     <option value="autumn">秋風落葉</option>
+                    <option value="starry">繁星點點</option>
+                    <option value="thunder">雷電交加</option>
                 </select>
             </div>
 
@@ -432,7 +445,19 @@
                 <div id="leaderboard-list"><div style='text-align:center; padding:20px; color:#888;'>載入中...</div></div>
             </div>
             <button class="btn" onclick="window.closeLeaderboard()">返回</button>
-            <button class="clear-btn" onclick="window.clearLeaderboard()">清除記錄 (教師用)</button>
+            <button class="clear-btn" onclick="window.requestClearPassword()">清除記錄 (教師用)</button>
+        </div>
+
+        <!-- 密碼輸入畫面 (新增) -->
+        <div id="password-modal" class="ui-layer hidden">
+            <div class="idiom-box" style="text-align: center; max-width: 90%;">
+                <h3>🔐 請輸入管理員密碼</h3>
+                <input type="password" id="admin-password" style="margin: 15px 0; width: 80%; font-size: 1.2rem;" placeholder="密碼">
+                <div style="display: flex; justify-content: center; gap: 10px;">
+                    <button class="btn-secondary" style="padding: 8px 20px; font-size: 1.2rem;" onclick="window.confirmClearLeaderboard()">確定</button>
+                    <button class="btn-secondary" style="padding: 8px 20px; font-size: 1.2rem; background-color: #999;" onclick="window.closePasswordModal()">取消</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -553,16 +578,12 @@
                 document.getElementById('leaderboard-layer').classList.remove('hidden');
             };
             
-            window.clearLeaderboard = function() {
-                let password = prompt("請輸入管理員密碼以清除記錄：");
-                if (password === "grandmont") {
-                    if(confirm("確定要清除本機記錄嗎？")) {
-                        localStorage.removeItem('horseGame_leaders');
-                        alert("已清除");
-                        renderLeaderboard([]);
-                    }
-                } else if (password !== null) {
-                    alert("密碼錯誤！");
+            window.performClear = function() {
+                if(confirm("確定要清除本機記錄嗎？")) {
+                    localStorage.removeItem('horseGame_leaders');
+                    alert("已清除");
+                    renderLeaderboard([]);
+                    window.closePasswordModal();
                 }
             };
             
@@ -610,20 +631,36 @@
                   });
             };
 
-            window.clearLeaderboard = function() {
-                let password = prompt("請輸入管理員密碼以清除記錄：");
-                if (password === "grandmont") {
-                    if(confirm("確定要清除所有雲端記錄嗎？")) {
-                         db.collection('artifacts').doc(APP_ID).collection('leaderboard').get().then(snapshot => {
-                             snapshot.forEach(doc => doc.ref.delete());
-                             alert("雲端記錄已清除");
-                         }).catch(e => alert("清除失敗"));
-                    }
-                } else if (password !== null) {
-                    alert("密碼錯誤！");
+            window.performClear = function() {
+                if(confirm("確定要清除所有雲端記錄嗎？")) {
+                     db.collection('artifacts').doc(APP_ID).collection('leaderboard').get().then(snapshot => {
+                         snapshot.forEach(doc => doc.ref.delete());
+                         alert("雲端記錄已清除");
+                         window.closePasswordModal();
+                     }).catch(e => alert("清除失敗"));
                 }
             };
         }
+
+        // 密碼保護邏輯
+        window.requestClearPassword = function() {
+            document.getElementById('password-modal').classList.remove('hidden');
+            document.getElementById('admin-password').value = "";
+            document.getElementById('admin-password').focus();
+        };
+
+        window.closePasswordModal = function() {
+            document.getElementById('password-modal').classList.add('hidden');
+        };
+
+        window.confirmClearLeaderboard = function() {
+            const password = document.getElementById('admin-password').value;
+            if (password === "grandmont") {
+                window.performClear();
+            } else {
+                alert("密碼錯誤！");
+            }
+        };
 
         // 核心排名算法
         function calculateRank(records, myName, myScore) {
@@ -769,16 +806,26 @@
         class WeatherParticle {
             constructor(type) {
                 this.type = type; this.x = Math.random() * (canvasWidth + 200); this.y = Math.random() * canvasHeight;
-                if (type === 'rain') { this.vy = Math.random() * 15 + 15; this.vx = -4; this.length = Math.random() * 20 + 20; }
+                if (type === 'rain' || type === 'thunder') { this.vy = Math.random() * 15 + 15; this.vx = -4; this.length = Math.random() * 20 + 20; }
                 else if (type === 'snow') { this.vy = Math.random() * 3 + 2; this.vx = Math.random() * 2 - 1; this.size = Math.random() * 4 + 2; this.swing = Math.random() * Math.PI * 2; }
                 else if (type === 'autumn') { this.vy = Math.random() * 2 + 1; this.vx = Math.random() * -3 - 2; this.size = Math.random() * 6 + 4; this.rotation = Math.random() * 360; this.rotationSpeed = Math.random() * 4 - 2; const colors = ['rgba(160, 82, 45, 0.8)', 'rgba(205, 92, 92, 0.8)', 'rgba(218, 165, 32, 0.8)']; this.color = colors[Math.floor(Math.random() * colors.length)]; }
-                else if (type === 'night') { this.vx = Math.random() * 2 - 1; this.vy = Math.random() * 2 - 1; this.size = Math.random() * 3 + 1; this.alpha = Math.random(); this.alphaSpeed = 0.02; }
+                else if (type === 'night' || type === 'starry') { 
+                    this.isStar = (type === 'starry');
+                    this.vx = this.isStar ? 0 : Math.random() * 2 - 1; 
+                    this.vy = this.isStar ? 0 : Math.random() * 2 - 1; 
+                    this.size = Math.random() * 3 + 1; 
+                    this.alpha = Math.random(); 
+                    this.alphaSpeed = 0.02; 
+                }
             }
             update() {
-                if (this.type === 'night') {
-                    this.x += this.vx - (speed * 0.2); this.y += this.vy; this.alpha += this.alphaSpeed;
+                if (this.type === 'night' || this.type === 'starry') {
+                    if(!this.isStar) {
+                        this.x += this.vx - (speed * 0.2); this.y += this.vy; 
+                        if (this.x < -50) this.x = canvasWidth + 50; if (this.y < 0) this.y = canvasHeight; if (this.y > canvasHeight) this.y = 0;
+                    }
+                    this.alpha += this.alphaSpeed;
                     if (this.alpha > 1 || this.alpha < 0.2) this.alphaSpeed *= -1;
-                    if (this.x < -50) this.x = canvasWidth + 50; if (this.y < 0) this.y = canvasHeight; if (this.y > canvasHeight) this.y = 0;
                 } else {
                     this.y += this.vy;
                     if (this.type === 'snow') { this.swing += 0.05; this.x += Math.sin(this.swing) * 1 + this.vx; this.x -= speed * 0.2; }
@@ -788,10 +835,17 @@
                 }
             }
             draw() {
-                if (this.type === 'rain') { ctx.strokeStyle = 'rgba(120, 130, 140, 0.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x + this.vx * 2, this.y + this.length); ctx.stroke(); }
+                if (this.type === 'rain' || this.type === 'thunder') { ctx.strokeStyle = 'rgba(120, 130, 140, 0.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x + this.vx * 2, this.y + this.length); ctx.stroke(); }
                 else if (this.type === 'snow') { ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); }
                 else if (this.type === 'autumn') { ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.rotation * Math.PI / 180); ctx.fillStyle = this.color; ctx.beginPath(); ctx.ellipse(0, 0, this.size, this.size/2, 0, 0, Math.PI*2); ctx.fill(); ctx.restore(); }
-                else if (this.type === 'night') { ctx.fillStyle = `rgba(200, 255, 100, ${this.alpha})`; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = `rgba(200, 255, 100, ${this.alpha * 0.3})`; ctx.beginPath(); ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2); ctx.fill(); }
+                else if (this.type === 'night' || this.type === 'starry') { 
+                    let color = this.isStar ? `rgba(255, 255, 230, ${this.alpha})` : `rgba(200, 255, 100, ${this.alpha})`;
+                    ctx.fillStyle = color; 
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); 
+                    if(!this.isStar) {
+                         ctx.fillStyle = `rgba(200, 255, 100, ${this.alpha * 0.3})`; ctx.beginPath(); ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2); ctx.fill(); 
+                    }
+                }
             }
         }
 
@@ -799,7 +853,11 @@
             constructor(type) {
                 this.type = type; this.particles = [];
                 if (this.type !== 'sunny') {
-                    let count = 50; if (this.type === 'rain') count = 80; if (this.type === 'night') count = 30; if (this.type === 'autumn') count = 40;
+                    let count = 50; 
+                    if (this.type === 'rain' || this.type === 'thunder') count = 80; 
+                    if (this.type === 'night') count = 30; 
+                    if (this.type === 'starry') count = 100;
+                    if (this.type === 'autumn') count = 40;
                     for(let i=0; i<count; i++) { this.particles.push(new WeatherParticle(this.type)); }
                 }
             }
@@ -842,12 +900,42 @@
                 this.bamboos.sort((a, b) => a.depth - b.depth); this.bamboos.forEach(b => b.update()); this.birds.forEach(b => b.update());
             }
             draw() {
-                if (weatherSystem.type === 'rain') ctx.fillStyle = '#cfd3d6'; else if (weatherSystem.type === 'snow') ctx.fillStyle = '#dbe4eb'; else if (weatherSystem.type === 'night') ctx.fillStyle = '#7f8fa6'; else if (weatherSystem.type === 'autumn') ctx.fillStyle = '#fdf5e6'; else ctx.fillStyle = '#fdfbf7';
+                let bgColor = '#fdfbf7'; // sunny
+                if (weatherSystem.type === 'rain' || weatherSystem.type === 'thunder') bgColor = '#cfd3d6'; 
+                else if (weatherSystem.type === 'snow') bgColor = '#dbe4eb'; 
+                else if (weatherSystem.type === 'night' || weatherSystem.type === 'starry') bgColor = '#7f8fa6'; 
+                else if (weatherSystem.type === 'autumn') bgColor = '#fdf5e6'; 
+
+                ctx.fillStyle = bgColor;
                 ctx.fillRect(0, 0, canvasWidth, groundHeight);
-                if (weatherSystem.type === 'night') { ctx.fillStyle = '#fdfbf7'; ctx.beginPath(); ctx.arc(canvasWidth * 0.8, canvasHeight * 0.2, 30, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; ctx.beginPath(); ctx.arc(canvasWidth * 0.8, canvasHeight * 0.2, 45, 0, Math.PI*2); ctx.fill(); } else if (weatherSystem.type !== 'rain') { if (weatherSystem.type === 'autumn') ctx.fillStyle = '#e17055'; else ctx.fillStyle = '#b33939'; ctx.beginPath(); ctx.arc(canvasWidth * 0.8, canvasHeight * 0.2, 40, 0, Math.PI*2); ctx.fill(); }
-                this.clouds.forEach(c => c.draw()); this.mountains.forEach(m => { if (weatherSystem.type === 'night') ctx.fillStyle = `rgba(20, 30, 40, ${m.opacity + 0.2})`; else ctx.fillStyle = `rgba(100, 100, 100, ${m.opacity})`; ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.bezierCurveTo(m.x + m.width/3, m.y - m.height, m.x + m.width*0.6, m.y - m.height/2, m.x + m.width, m.y); ctx.fill(); });
+                
+                // 雷電效果
+                if (weatherSystem.type === 'thunder' && Math.random() < 0.02) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+                    ctx.fillStyle = bgColor; // 恢復
+                }
+
+                if (weatherSystem.type === 'night' || weatherSystem.type === 'starry') { 
+                    ctx.fillStyle = '#fdfbf7'; ctx.beginPath(); ctx.arc(canvasWidth * 0.8, canvasHeight * 0.2, 30, 0, Math.PI*2); ctx.fill(); 
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; ctx.beginPath(); ctx.arc(canvasWidth * 0.8, canvasHeight * 0.2, 45, 0, Math.PI*2); ctx.fill(); 
+                } 
+                else if (weatherSystem.type !== 'rain' && weatherSystem.type !== 'thunder') { 
+                    if (weatherSystem.type === 'autumn') ctx.fillStyle = '#e17055'; else ctx.fillStyle = '#b33939'; 
+                    ctx.beginPath(); ctx.arc(canvasWidth * 0.8, canvasHeight * 0.2, 40, 0, Math.PI*2); ctx.fill(); 
+                }
+
+                this.clouds.forEach(c => c.draw()); 
+                this.mountains.forEach(m => { 
+                    if (weatherSystem.type === 'night' || weatherSystem.type === 'starry') ctx.fillStyle = `rgba(20, 30, 40, ${m.opacity + 0.2})`; 
+                    else ctx.fillStyle = `rgba(100, 100, 100, ${m.opacity})`; 
+                    ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.bezierCurveTo(m.x + m.width/3, m.y - m.height, m.x + m.width*0.6, m.y - m.height/2, m.x + m.width, m.y); ctx.fill(); 
+                });
                 this.bamboos.forEach(b => b.draw()); this.birds.forEach(b => b.draw());
-                ctx.beginPath(); ctx.rect(0, groundHeight, canvasWidth, canvasHeight - groundHeight); if (weatherSystem.type === 'night') ctx.fillStyle = '#95a5a6'; else ctx.fillStyle = '#e8e6e1'; ctx.fill();
+                
+                ctx.beginPath(); ctx.rect(0, groundHeight, canvasWidth, canvasHeight - groundHeight); 
+                if (weatherSystem.type === 'night' || weatherSystem.type === 'starry') ctx.fillStyle = '#95a5a6'; else ctx.fillStyle = '#e8e6e1'; 
+                ctx.fill();
                 ctx.beginPath(); ctx.moveTo(0, groundHeight); ctx.lineTo(canvasWidth, groundHeight); ctx.strokeStyle = '#555'; ctx.lineWidth = 2; ctx.stroke();
             }
         }
@@ -1309,6 +1397,11 @@
         }
 
         function handleInput(e) {
+            // 修正：允許在輸入框中輸入空白，不阻止默認行為
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
+                return;
+            }
+
             if (e.code === 'Space' || e.key === ' ') {
                 e.preventDefault();
             }
