@@ -117,7 +117,7 @@
             opacity: 0;
         }
 
-        select {
+        select, input[type="text"] {
             padding: 10px 15px;
             font-size: 1.2rem;
             font-family: 'Noto Serif TC', serif;
@@ -126,6 +126,14 @@
             background-color: #fff;
             color: #333;
             outline: none;
+        }
+
+        /* 隱藏自定義輸入框的默認狀態 */
+        #custom-name-input {
+            display: none; 
+        }
+
+        select {
             appearance: none;
             background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23333%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
             background-repeat: no-repeat;
@@ -161,6 +169,12 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.2);
             transition: transform 0.1s;
             min-width: 200px;
+        }
+        
+        .btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
         }
 
         .btn-secondary {
@@ -208,7 +222,7 @@
 
         #player-name-display {
             position: absolute;
-            bottom: 30px;
+            bottom: 120px; 
             left: 0;
             width: 100%;
             text-align: center;
@@ -321,7 +335,7 @@
         .rank-3 .rank-num { color: #cd7f32; font-size: 1.3rem; text-shadow: 1px 1px 0px #a0522d; }
 
         .rank-num { font-weight: bold; width: 40px; text-align: center; font-family: 'Ma Shan Zheng', cursive; }
-        .rank-name { flex-grow: 1; padding-left: 10px; text-align: left;}
+        .rank-name { flex-grow: 1; padding-left: 10px; text-align: center; }
         .rank-score { font-weight: bold; color: #d62828; width: 80px; text-align: right;}
         .badge { margin-left: 5px; font-size: 1.2rem; }
 
@@ -333,7 +347,7 @@
             p { font-size: 1rem; }
             .btn { font-size: 1.5rem; padding: 10px 30px; }
             #score-display { font-size: 2.5rem; }
-            #player-name-display { font-size: 2rem; bottom: 70px; }
+            #player-name-display { font-size: 2rem; bottom: 100px; }
         }
     </style>
 </head>
@@ -343,7 +357,7 @@
         <div class="seal">中華<br>文化</div>
         <div id="score-display">距離: 0 米</div>
         <div id="player-name-display"></div>
-        <div id="img-status">圖片狀態: 檢查中...</div>
+        <div id="img-status">圖片狀態: 載入中...</div>
         <canvas id="gameCanvas"></canvas>
 
         <div id="start-screen" class="ui-layer">
@@ -359,6 +373,8 @@
             
             <div class="input-group">
                 <select id="class-select"><option value="" disabled selected>請選擇班別</option></select>
+                <!-- 自訂姓名輸入框 -->
+                <input type="text" id="custom-name-input" placeholder="請輸入自訂姓名" maxlength="10">
                 <select id="student-select" disabled><option value="" disabled selected>請選擇姓名</option></select>
                 <select id="bg-select">
                     <option value="" selected>隨機背景 (預設)</option>
@@ -374,7 +390,7 @@
             <p style="font-size: 1.2rem; color: #d62828; font-weight: bold; margin-top:5px;">🔥 最後50米極限考驗</p>
             
             <div class="btn-container">
-                <button class="btn" onclick="window.startGame()">開始奔馳</button>
+                <button id="start-btn" class="btn" onclick="window.startGame()" disabled>載入中...</button>
                 <button class="btn-secondary" onclick="window.showLeaderboard()">🏆 查看排行榜</button>
             </div>
         </div>
@@ -383,7 +399,7 @@
             <h2 id="end-title">馬到功成</h2>
             <p id="end-score">奔跑距離：計算中...</p> 
             
-            <!-- 新增：排名顯示 -->
+            <!-- 排名顯示 -->
             <div id="rank-display"></div>
 
             <div class="idiom-box">
@@ -414,14 +430,59 @@
     </div>
 
     <script>
-        // --- 1. 初始化全域變數與設定 ---
+        // --- 1. 圖片預載 ---
+        const loadedImages = {
+            run1: new Image(),
+            run2: new Image(),
+            jump: new Image()
+        };
+        let imagesLoadedCount = 0;
+        const totalImages = 3;
+
+        function checkImagesReady() {
+            imagesLoadedCount++;
+            if (imagesLoadedCount === totalImages) {
+                const btn = document.getElementById('start-btn');
+                if(btn) {
+                    btn.innerText = "開始奔馳";
+                    btn.disabled = false;
+                }
+                const status = document.getElementById('img-status');
+                if(status) {
+                    status.innerText = "圖片狀態: 載入完成";
+                    status.style.color = "#27ae60";
+                }
+            }
+        }
+
+        loadedImages.run1.onload = checkImagesReady;
+        loadedImages.run2.onload = checkImagesReady;
+        loadedImages.jump.onload = checkImagesReady;
+        loadedImages.run1.src = 'horse_run1.png';
+        loadedImages.run2.src = 'horse_run2.png';
+        loadedImages.jump.src = 'horse_jump.png';
+
+        // --- 2. 全域變數與 Firebase 設定 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCdXs8koAE6yHcFlpn_AUwd-CVIra_JHeI",
+            authDomain: "horse-953b3.firebaseapp.com",
+            projectId: "horse-953b3",
+            storageBucket: "horse-953b3.firebasestorage.app",
+            messagingSenderId: "544698080960",
+            appId: "1:544698080960:web:6da549f79dadcc4ca8d725",
+            measurementId: "G-THQY7C7JKF"
+        };
+
+        let db = null;
+        let auth = null;
+        let useCloud = false;
+        const APP_ID = 'horse-racing-2026'; 
+
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        let canvasWidth, canvasHeight;
-        let groundHeight;
-        
+        let canvasWidth, canvasHeight, groundHeight;
         let isPlaying = false;
         let gameFrame = 0;
         let score = 0;
@@ -442,23 +503,7 @@
         let spawnTimer = 0;
         let lastTime = 0;
 
-        // Firebase 變數
-        let db = null;
-        let auth = null;
-        let useCloud = false;
-        const APP_ID = 'horse-racing-2026';
-
-        // --- 2. 初始化 Firebase (Compat Mode) ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyCdXs8koAE6yHcFlpn_AUwd-CVIra_JHeI",
-            authDomain: "horse-953b3.firebaseapp.com",
-            projectId: "horse-953b3",
-            storageBucket: "horse-953b3.firebasestorage.app",
-            messagingSenderId: "544698080960",
-            appId: "1:544698080960:web:6da549f79dadcc4ca8d725",
-            measurementId: "G-THQY7C7JKF"
-        };
-
+        // --- 3. 初始化 Firebase ---
         try {
             if (typeof firebase !== 'undefined') {
                 firebase.initializeApp(firebaseConfig);
@@ -469,82 +514,31 @@
                     if (user) {
                         console.log("Cloud Mode Active");
                         useCloud = true;
-                        
-                        // 覆寫為雲端函數
-                        window.saveRecord = function(name, distance) {
-                            // 距離上限 500米
-                            let finalDistance = Math.min(distance, 500);
-                            
-                            db.collection('artifacts').doc(APP_ID).collection('leaderboard').add({
-                                name: name, score: finalDistance, timestamp: new Date().toISOString()
-                            }).then(() => {
-                                // 存檔後查詢排名
-                                checkMyRank(name, finalDistance);
-                            }).catch(e => console.error("Cloud save error", e));
-                        };
-
-                        window.showLeaderboard = function() {
-                            document.getElementById('leaderboard-layer').classList.remove('hidden');
-                            document.getElementById('leaderboard-list').innerHTML = "<div style='text-align:center; padding:20px; color:#888;'>載入中...</div>";
-                            
-                            // 抓取足夠資料以進行本地排名運算
-                            db.collection('artifacts').doc(APP_ID).collection('leaderboard')
-                              .orderBy('score', 'desc').limit(100) 
-                              .onSnapshot((snapshot) => {
-                                  let records = [];
-                                  snapshot.forEach(doc => records.push(doc.data()));
-                                  renderLeaderboard(records);
-                              }, (error) => {
-                                  console.error("Cloud load error", error);
-                                  const localRec = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
-                                  renderLeaderboard(localRec);
-                              });
-                        };
-                        
-                        window.checkMyRank = function(name, distance) {
-                             db.collection('artifacts').doc(APP_ID).collection('leaderboard')
-                              .orderBy('score', 'desc').get().then(snapshot => {
-                                  let records = [];
-                                  snapshot.forEach(doc => records.push(doc.data()));
-                                  // 計算排名
-                                  let rank = calculateRank(records, name, distance);
-                                  displayRankResult(rank);
-                              });
-                        };
-
-                        window.clearLeaderboard = function() {
-                            if(confirm("確定要清除所有雲端記錄嗎？")) {
-                                 db.collection('artifacts').doc(APP_ID).collection('leaderboard').get().then(snapshot => {
-                                     snapshot.forEach(doc => doc.ref.delete());
-                                     alert("雲端記錄已清除");
-                                 }).catch(e => alert("清除失敗"));
-                            }
-                        };
-
+                        setupCloudFunctions(); // 連線成功後覆蓋為雲端函數
                     } else {
                         auth.signInAnonymously().catch(e => console.warn("Auth failed:", e));
                     }
                 });
             } else {
-                setupLocalFallback();
+                setupLocalFallback(); // 無 Firebase 庫，使用本地
             }
         } catch (e) {
             console.warn("Firebase init error, using local mode.", e);
             setupLocalFallback();
         }
         
+        // 預設先執行一次本地設定，防止連線前按按鈕報錯
         if(!useCloud) setupLocalFallback();
 
-        // --- 3. 輔助函數 (排行榜) ---
+        // --- 4. 排行榜邏輯函數 (本地與雲端) ---
 
-        // 本地模式邏輯 (Fallback)
+        // 本地模式 (預設/離線)
         function setupLocalFallback() {
             window.saveRecord = function(name, distance) {
                 let finalDistance = Math.min(distance, 500);
                 let records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
                 records.push({ name: name, score: finalDistance, timestamp: new Date().toISOString() });
                 localStorage.setItem('horseGame_leaders', JSON.stringify(records));
-                
                 checkMyRank(name, finalDistance, records);
             };
 
@@ -554,12 +548,6 @@
                 document.getElementById('leaderboard-layer').classList.remove('hidden');
             };
             
-            window.checkMyRank = function(name, score) {
-                const records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
-                let rank = calculateRank(records, name, score);
-                displayRankResult(rank);
-            };
-            
             window.clearLeaderboard = function() {
                 if(confirm("確定要清除本機記錄嗎？")) {
                     localStorage.removeItem('horseGame_leaders');
@@ -567,11 +555,64 @@
                     renderLeaderboard([]);
                 }
             };
+            
+            window.checkMyRank = function(name, score) {
+                const records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
+                let rank = calculateRank(records, name, score);
+                displayRankResult(rank);
+            };
         }
 
-        // 核心排名算法 (緊湊排名 Dense Ranking + 500米並列第一)
+        // 雲端模式 (連線成功後啟用)
+        function setupCloudFunctions() {
+            window.saveRecord = function(name, distance) {
+                let finalDistance = Math.min(distance, 500);
+                db.collection('artifacts').doc(APP_ID).collection('leaderboard').add({
+                    name: name, score: finalDistance, timestamp: new Date().toISOString()
+                }).then(() => {
+                    window.checkMyRank(name, finalDistance);
+                }).catch(e => console.error("Cloud save error", e));
+            };
+
+            window.showLeaderboard = function() {
+                document.getElementById('leaderboard-layer').classList.remove('hidden');
+                document.getElementById('leaderboard-list').innerHTML = "<div style='text-align:center; padding:20px; color:#888;'>載入中...</div>";
+                
+                db.collection('artifacts').doc(APP_ID).collection('leaderboard')
+                  .orderBy('score', 'desc').limit(100) 
+                  .onSnapshot((snapshot) => {
+                      let records = [];
+                      snapshot.forEach(doc => records.push(doc.data()));
+                      renderLeaderboard(records);
+                  }, (error) => {
+                      console.error("Cloud load error", error);
+                      const localRec = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
+                      renderLeaderboard(localRec);
+                  });
+            };
+            
+            window.checkMyRank = function(name, distance) {
+                 db.collection('artifacts').doc(APP_ID).collection('leaderboard')
+                  .orderBy('score', 'desc').get().then(snapshot => {
+                      let records = [];
+                      snapshot.forEach(doc => records.push(doc.data()));
+                      let rank = calculateRank(records, name, distance);
+                      displayRankResult(rank);
+                  });
+            };
+
+            window.clearLeaderboard = function() {
+                if(confirm("確定要清除所有雲端記錄嗎？")) {
+                     db.collection('artifacts').doc(APP_ID).collection('leaderboard').get().then(snapshot => {
+                         snapshot.forEach(doc => doc.ref.delete());
+                         alert("雲端記錄已清除");
+                     }).catch(e => alert("清除失敗"));
+                }
+            };
+        }
+
+        // 共用：排名計算 (Dense Ranking)
         function calculateRank(records, myName, myScore) {
-            // 1. 排序：分數高者前，同分則先到者前(timestamp)
             records.sort((a, b) => {
                 if (b.score !== a.score) return b.score - a.score;
                 return new Date(a.timestamp) - new Date(b.timestamp);
@@ -583,45 +624,25 @@
 
             for (let i = 0; i < records.length; i++) {
                 let rec = records[i];
-                
-                // 分數變動，名次+1
                 if (rec.score !== prevScore) {
                     currentRank++;
                 }
                 // 500米強制第一
                 let effectiveRank = (rec.score >= 500) ? 1 : currentRank;
-                
-                prevScore = rec.score;
 
-                // 找到自己 (這裡用名字和分數比對，實際應用建議用 ID)
-                // 這裡簡單用 Name + Score + 最近的時間來判斷
                 if (rec.name === myName && rec.score === myScore) {
                     rank = effectiveRank;
-                    // 為了避免重名問題，這裡找到第一個符合的就返回
-                    // 實務上應該在 saveRecord 時回傳 docId 來精確比對
                     break; 
                 }
+                prevScore = rec.score;
             }
             return rank;
         }
 
-        function displayRankResult(rank) {
-            const rankDisplay = document.getElementById('rank-display');
-            if (rank > 0 && rank <= 20) {
-                rankDisplay.innerHTML = `太強了！目前排名第 <span style="font-size:2.5rem; color:#d62828; text-shadow: 2px 2px 0px #fff;">${rank}</span> 名 🏅`;
-            } else if (rank > 20) {
-                rankDisplay.innerText = `目前排名第 ${rank} 名 (未入前20)`;
-                rankDisplay.style.color = "#555";
-            } else {
-                rankDisplay.innerText = "未入榜，請再接再厲！";
-                rankDisplay.style.color = "#555";
-            }
-        }
-
+        // 共用：渲染列表
         function renderLeaderboard(records) {
             const listContainer = document.getElementById('leaderboard-list');
             
-            // 排序
             records.sort((a, b) => {
                 if (b.score !== a.score) return b.score - a.score;
                 return new Date(a.timestamp) - new Date(b.timestamp);
@@ -641,9 +662,8 @@
                 
                 let rankToShow = (rec.score >= 500) ? 1 : currentRank;
                 
-                // 顯示限制：只顯示前 20 筆
                 if (displayCount >= 20) break;
-
+                
                 let rankClass = "";
                 if (rankToShow === 1) rankClass = "rank-1";
                 else if (rankToShow === 2) rankClass = "rank-2";
@@ -669,9 +689,21 @@
             listContainer.innerHTML = html;
         }
         
+        function displayRankResult(rank) {
+            const rankDisplay = document.getElementById('rank-display');
+            if (rank > 0 && rank <= 20) {
+                rankDisplay.innerHTML = `太強了！目前排名第 <span style="font-size:2.5rem; color:#d62828; text-shadow: 2px 2px 0px #fff;">${rank}</span> 名 🏅`;
+                setTimeout(() => playWinSound(), 500);
+            } else {
+                rankDisplay.innerText = `未入前20名 (第 ${rank > 0 ? rank : '-'} 名)，請再接再厲！`;
+                rankDisplay.style.color = "#555";
+            }
+        }
+
         window.closeLeaderboard = function() { document.getElementById('leaderboard-layer').classList.add('hidden'); };
 
-        // --- 4. 視窗與選單 ---
+        // --- 5. 遊戲物件類別 ---
+
         function resize() {
             canvasWidth = canvas.width = window.innerWidth;
             canvasHeight = canvas.height = window.innerHeight;
@@ -680,57 +712,6 @@
         window.addEventListener('resize', resize);
         resize();
 
-        const studentDB = {
-            "1A": ["1 陳熹雋","2 陳意衡","3 陳彥君","4 陳楚皓","5 陳彥羲","6 侯林菲","7 許皓琳","8 黃煜軒","9 關旨荇","10 劉卓瀅","11 劉仲宇","12 羅卓熙","13 李芯悦","14 呂俊霖","15 呂仲軒","16 吳諾兒","17 彭梓悦","18 施鈞源","19 孫子豪","20 曾以仁","21 曹正","22 王天宇","23 王柏諾","24 胡悦翹"],
-            "1B": ["1 陳曉瑩","2 陳梓韜","3 陳永昇","4 陳悅心","5 張峻烽","6 蔡宏鑫","7 朱灝喆","8 何允恒","9 韓欣穎","10 叶宇恒","11 江泳琳","12 關明菲","13 鄺雪晴","14 劉芊汝","15 羅復希","16 李俊霆","17 李鎧","18 梁凱淇","19 巫恒逸","20 柯芷晴","21 蘇智泓","22 曾鋭彬","23 尹梓言","24 胡梓榣","25 丘文博","26 朱鑠穎"],
-            "1C": ["1 歐陽子朗","2 周柏橋","3 鄭浚東","4 張洛頤","5 張允謙","6 朱善鋐","7 洪永灃","8 葉愷晴","9 江澤楷","10 江泳婷","11 郭曉靜","12 林芊玥","13 劉子儀","14 李卓諾","15 李柏翱","16 梁心巧","17 梁逸熹","18 危逸辰","19 潘承鈞","20 蕭雨彤","21 譚愷瑤","22 譚丞竣","23 田晞潼","24 王樂澄","25 黃子軒","26 王梓然","27 葉芷晴"],
-            "1D": ["1 陳振軒","2 陳晞","3 陳柏熹","4 陳宏信","5 張睎童","6 周羲和","7 徐朗睎","8 方俊熹","9 方梓喬","10 江徽","11 郭又嘉","12 劉淳浠","13 梁靖堯","14 李祉諾","15 林詩穎","16 廖心瑜","17 盧曉怡","18 顏孝善","19 鄧先喻","20 鄧芷珺","21 謝泓泰","22 童衍嘉","23 黃煦昡","24 吳嘉鋭","25 楊善雯","26 姚芊語"],
-            "1E": ["1 陳希霖","2 陳晞瑜","3 陳君業","4 陳溰琳","5 陳星宇","6 鄭子榆","7 馮晞童","8 何鉦霆","9 許正翹","10 郭柏希","11 郭柏喬","12 林嘉慧","13 羅敏芫","14 梁天豪","15 連尉𧧽","16 盧心怡","17 勞以曈","18 莫彥博","19 潘柏皓","20 鄧雨晴","21 蔡竣軒","22 黃晉謙","23 黃詩淇","24 胡凱藍","25 顏嘉希","26 楊樂軒"],
-            "2A": ["1 陳信希","2 陳宥銘","3 鄒嘉柔","4 鄭雅之","5 張予寧","6 馮朗華","7 何旻蔚","8 何梓嫣","9 許若楠","10 林捷然","11 林陽曦","12 李卓斐","13 梁昊","14 梁凱媃","15 廖凱漩","16 勞君婷","17 馬鉦博","18 伍灝然","19 蕭玥呈","20 曾恩陶","21 王祐辰","22 黃玳嘉","23 黃彥熹","24 楊旻彧","25 葉芷藴"],
-            "2B": ["1 陳雋禮","2 陳柏霖","3 陳瑋楠","4 陳穎澄","5 鄭皓文","6 張峻僑","7 錢玟謙","8 鍾振耀","9 何籽齊","10 何芷奷","11 林允兒","12 劉星宇","13 李晞雒","14 李芯潁","15 梁雅兒","16 梁心怡","17 盧靖方","18 麥雅淇","19 吳家賢","20 孫鎧霖","21 曾夢歡","22 黃梓朗","23 謝樂懿","24 嚴敏瑜","25 余芊潼"],
-            "2C": ["1 陳家博","2 陳佰僑","3 陳楚伊","4 鄭懿睿","5 張芷僑","6 張日曦","7 蔡子言","8 朱晉賢","9 朱詠珊","10 鍾禮賢","11 侯佩兒","12 管諾賢","13 郭昊洋","14 黎子謙","15 劉昊均","16 劉浚鋐","17 李諾頤","18 梁琋雯","19 林新珊","20 劉梓潼","21 吳綽瀅","22 譚紫寧","23 王羨妤","24 黃庭謙","25 鍾浩鈱"],
-            "2D": ["1 區晉樑","2 陳瀞希","3 陳凱淳","4 陳鎧賢","5 張鈞琳","6 馮凱琳","7 林雅雯","8 林蔣沂","9 劉玥澄","10 羅浩言","11 李溵喬","12 梁澤仁","13 李靖頤","14 林烱烽","15 呂綽瑤","16 毛羿巽","17 吳憲峰","18 石芮霖","19 曾禮賢","20 王儒悦","21 胡錦天","22 王暟瞳","23 胡梓筠","24 伍彥潮","25 余思穎"],
-            "2E": ["1 歐希彤","2 陳梓昊","3 陳芷琳","4 張司宇","5 張煒傑","6 張恩僑","7 趙浩軒","8 戴嘉瑩","9 嚴崇灝","10 葉文晞","11 黎爾澄","12 黎爾謙","13 梁栢睿","14 李依娜","15 連珝㞩","16 巫倬鋒","17 戴晞然","18 譚竣軒","19 鄧康瑤","20 黃千睿","21 黃寶儀","22 黃梓謙","23 吳妤諳","24 葉美琳","25 朱晨曦"],
-            "3A": ["1 陳家淳","2 張薾晨","3 張景軒","4 何沛靈","5 何韻瀅","6 關羨錤","7 林善瑩","8 李朗棋","9 李庭欣","10 梁可榆","11 林雅婷","12 吳智琛","13 吳愷恩","14 吳葉恆","15 歐航瑋","16 蘇逸朗","17 施善文","18 唐婉宜","19 曾卓謙","20 黃頌謙","21 王煦霖","22 黃贊殷","23 黃一陽","24 胡蓁翹","25 余沛凝"],
-            "3B": ["1 陳浠婷","2 陳灝斌","3 張樾","4 蔡海澄","5 周望舒","6 鄧渲穎","7 熊梓喬","8 關詠琳","9 黎熙桐","10 林柏宇","11 劉瀰","12 劉柏希","13 梁語軒","14 馬熙雯","15 吳思言","16 彭映雪","17 潘朗楷","18 黃覓颻","19 黃小洹","20 黃天信","21 王梓謙","22 王梓穎","23 胡凱澄","24 邱彥楟","25 葉栢廷"],
-            "3C": ["1 陳逸朗","2 張允嵐","3 莊鎧溢","4 馮卓賢","5 郭睿捷","6 簡芷桐","7 林善晴","8 林紫堯","9 劉睿軒","10 李祉誼","11 連信言","12 廖望正","13 羅啟晉","14 蕭梓淇","15 孫苡澄","16 施靜嵐","17 鄧允然","18 曾天佑","19 王煦霆","20 黃家熙","21 胡善之","22 楊樂昕","23 葉愷晴","24 葉蘊瑤","25 庾凱舒"],
-            "3D": ["1 陳晉燊","2 陳思霖","3 鍾俊賢","4 戴沛銘","5 何韻妍","6 黎允皓","7 黎昕潼","8 林心賢","9 李紫盈","10 梁澤栩","11 梁詩諾","12 梁圓圓","13 連家晴","14 林晴嵐","15 陸穎琳","16 龍允澄","17 顏沛怡","18 潘景康","19 潘睿晞","20 施澤仁","21 戴焯言","22 杜國維","23 黃子俊","24 楊靖泓","25 楊心蕊"],
-            "3E": ["1 查奕森","2 陳詠芯","3 陳殷霆","4 陳雨晴","5 周穎熙","6 鄭芷瀅","7 張閔程","8 霍柏彥","9 葉亦翔","10 黎昕澄","11 利卓羽","12 李芊澄","13 梁卓謙","14 李俊賢","15 李凱澄","16 羅德蔚","17 吳泳姸","18 潘承耀","19 譚沛林","20 黃頌然","21 胡旻慧","22 胡嘉濠","23 楊靖","24 鄭雅予"],
-            "4A": ["1 陳卓瑩","2 陳信佑","3 陳靖欣","4 鄭多宏","5 張綽祐","6 朱沛翹","7 方梓晴","8 康柏熙","9 許珮筠","10 許紫桐","11 洪鎮堯","12 簡希而","13 林泳桐","14 李淽玥","15 李廷熙","16 梁家浠","17 陸思慧","18 梁澤琛","19 麥梓琳","20 吳子睿","21 柯溍貽","22 潘奕匡","23 潘奕霖","24 湯梓峰","25 黃知恩","26 黃浚銘","27 吳婧言","28 吳婧煊","29 吳思博","30 余孝賢","31 袁浚熙"],
-            "4B": ["1 陳奕廷","2 鄭朗軒","3 張渼偲","4 張子浩","5 賀致堯","6 何旻蒑","7 許皓泓","8 林奕仲","9 林玥瑩","10 劉映汝","11 羅瑋霖","12 李瑋澄","13 梁景熹","14 梁詠欣","15 梁漪桓","16 李樂懿","17 梁恩浠","18 羅鎧晴","19 呂清妍","20 馬昊燊","21 湯鎮銘","22 田晞樂","23 唐嘉禧","24 尹樂恩","25 王梓琪","26 王熙雯","27 王汶僖","28 吳子朗","29 邱家樂","30 邱彥竣","31 楊子渘"],
-            "4C": ["1 陳見之","2 陳樂熙","3 錢巧霖","4 蔡清妍","5 蔡焌軒","6 周彥彤","7 關宗灝","8 奚梓麟","9 鄧諾文","10 郭俞彤","11 賴至誠","12 黎祉樂","13 林國言","14 李昕熹","15 梁晞妍","16 梁宇霆","17 吳卓言","18 吳沛珊","19 譚安喬","20 曾宇哲","21 黃寶謙","22 楊心妤","23 楊穎芯","24 楊祐安"],
-            "4D": ["1 陳俊凱","2 陳彥彤","3 鄭丞超","4 鄭穎恆","5 張榆澄","6 朱俊朗","7 洪力蔭","8 林泳彤","9 劉芷瑤","10 李洋愷","11 梁芷悠","12 蘇俊皓","13 施明雅","14 戴焯諾","15 譚楚桐","16 湯詠賢","17 曹子玥","18 黃琸舜","19 黃天嵐","20 黃逸翹","21 楊晟軒","22 楊景匡","23 邢維丞","24 翁奕琳"],
-            "4E": ["1 區竣睎","2 陳凱珮","3 陳詩穎","4 陳彥希","5 鄒家謙","6 鄭子諾","7 張浚杭","8 何敏嘉","9 羅卓謙","10 盧佳琪","11 伍偉庭","12 柯鈞諾","13 潘英貴","14 蘇凱潼","15 謝心弦","16 黃嘉欣","17 黃柏陶","18 黃梓晴","19 黃子誠","20 吳思橋"],
-            "5A": ["1 陳頌錡","2 陳淏揚","3 陳滶銘","4 陳思羽","5 鄭婥妤","6 趙恩彤","7 曹子錀","8 蔡子瑩","9 何思齊","10 郭靜瑩","11 郭幸兒","12 郭君睿","13 林迪文","14 梁卓然","15 李顯揚","16 李星慧","17 羅泳雅","18 盧妍孜","19 呂洛恒","20 馬曉晴","21 馬梓崴","22 歐恩貝","23 邱芊羽","24 譚知行","25 鄧司鉉","26 曾靖嵐","27 曾柏軒","28 吳金麟","29 胡定駱","30 楊玥瑩","31 翁浚皓","32 張銘曉"],
-            "5B": ["1 陳子悠","2 周雋希","3 鄭儲邦","4 莊浠瑩","5 夏子弘","6 賀子宸","7 許峻灝","8 林浩軒","9 林嘉敏","10 李卓珈","11 李俊逸","12 李朗達","13 李宇謙","14 李加敏","15 李允捷","16 廖幸兒","17 劉可兒","18 吳朗瑜","19 伍慧珊","20 岑可翹","21 孫銘浠","22 譚棨燊","23 譚應軒","24 曾慶洛","25 黃卓妤","26 黃承晞","27 黃梓欣","28 黃詠心","29 袁崇曦","30 周梓瑜"],
-            "5C": ["1 陳熹姸","2 陳瑋灝","3 陳昱霖","4 鄭哲","5 張嘉妤","6 鄒卓喬","7 鄺可喬","8 黎凱甄","9 黎子鏗","10 林思彤","11 劉佩祺","12 劉芷萱","13 李思瑤","14 盧鴻宇","15 盧思羽","16 曾瀚賢","17 徐羨喬","18 黃琸堯","19 黃芯諾","20 黃維博","21 黃雨桐","22 胡啓湸","23 胡倩瑋","24 楊舜之"],
-            "5D": ["1 陳凱恩","2 陳立喬","3 陳敏軒","4 陳茂凱","5 鄭奕飛","6 錢凱晴","7 蔡俊添","8 周青陽","9 周瑞蕎","10 鍾禮謙","11 戴嘉禧","12 何靖喬","13 何芷源","14 郭臨","15 林家而","16 林健銘","17 李卓穎","18 李凱宇","19 馬綽嬣","20 馬琝傑","21 馬恩悦","22 莫梓妤","23 吳芷盈","24 伍思妍","25 葉思朗","26 楊若萱"],
-            "5E": ["1 陳駿豪","2 陳芝敏","3 張怡禎","4 張怡萱","5 蔡卓翹","6 方栢宇","7 符碩軒","8 何家瑩","9 黃健彬","10 許悅","11 林思辰","12 林禹軒","13 羅婉瑩","14 李翊行","15 梁心盈","16 李姵賢","17 麥俊仁","18 譚暘霖","19 黃晉熹","20 王晧恩","21 邱炫智","22 楊浩程"],
-            "6A": ["1 陳泓俊","2 陳思成","3 張綽軒","4 張筱攸","5 程頌兒","6 周芷萱","7 周子祐","8 馮智譽","9 許樂媛","10 許心淇","11 洪巧恩","12 龔均曈","13 黎鐘澤","14 賴家敏","15 黎子芊","16 黎子萱","17 劉天溵","18 梁晨","19 梁詠嵐","20 李俊禧","21 李樂怡","22 林煇皓","23 廖望哲","24 吳承熹","25 潘茵彤","26 蕭梓諾","27 蕭仲言","28 施瀛鈞","29 鄧旨峻","30 黃卓文","31 黃苡喬","32 吳子君","33 鄭力中"],
-            "6B": ["1 區永揚","2 陳宏瑋","3 張浚一","4 張駿朗","5 張凱晴","6 張凱喬","7 張梓淳","8 張芷熒","9 蔡卓侖","10 鍾希兒","11 方心頤","12 何沛陞","13 葉景軒","14 郭千琬","15 郭倚彤","16 林樂恩","17 劉康佑","18 李曉琳","19 李瀚泓","20 林奕澍","21 羅琸嵐","22 龍洛蜂","23 曾梓傑","24 蔡永匡","25 尹佟恩","26 黃希瞳","27 黃可頤","28 黃贊臣","29 黃偉睿","30 吳璟悠"],
-            "6C": ["1 陳鎧廷","2 陳欣彤","3 周啟豪","4 鄭凱沂","5 張梓烽","6 趙梓希","7 趙慧喬","8 許願","9 林汶進","10 羅嘉悠","11 李智庭","12 梁雲姿","13 李芊慧","14 羅曦婷","15 伍君昊","16 鄧鈞朗","17 黃駿佑","18 黃思澄","19 吳政鋭","20 袁凱霖","21 翁奕熙"],
-            "6D": ["1 陳芷瑜","2 張浩揚","3 張晨曦","4 張映澄","5 鄒本騫","6 鍾峻熙","7 柯繼然","8 江俊曦","9 郭甯","10 林昱丞","11 李湚頤","12 梁文晞","13 李悅曦","14 呂柏軒","15 沙婉如","16 譚紫悦","17 鄧宇政","18 丁健悠","19 董穎天","20 黃健朗","21 胡浚鴻"],
-            "6E": ["1 陳倚盈","2 陳宇軒","3 鄭瑞豐","4 張晞瑜","5 張梓希","6 林曉婷","7 林梓慧","8 李承禧","9 李家興","10 林新杰","11 雷梓希","12 吳綽鎧","13 王鳳賢","14 王國南","15 黃致肇","16 黃鎮熙","17 黃振庭","18 楊希昕","19 葉子逸"]
-        };
-
-        const idioms = [
-            { text: "馬到功成", desc: "形容事情順利，一開始就取得成功。" },
-            { text: "龍馬精神", desc: "形容精神健旺、充沛。" },
-            { text: "老馬識途", desc: "比喻閱歷多的人富有經驗，熟悉情況，能起引導作用。" },
-            { text: "一馬當先", desc: "作戰時策馬衝鋒在前。形容領先，帶頭。" },
-            { text: "萬馬奔騰", desc: "聲勢浩大或場面熱烈。" },
-            { text: "千里馬", desc: "原指善跑的駿馬，後比喻有才幹的人。" }
-        ];
-
-        const classSelect = document.getElementById('class-select');
-        const studentSelect = document.getElementById('student-select');
-        Object.keys(studentDB).forEach(cls => { const option = document.createElement('option'); option.value = cls; option.innerText = cls; classSelect.appendChild(option); });
-        classSelect.addEventListener('change', function() {
-            const selectedClass = this.value; studentSelect.innerHTML = '<option value="" disabled selected>請選擇姓名</option>';
-            if (selectedClass) { studentSelect.disabled = false; studentDB[selectedClass].forEach(stu => { const option = document.createElement('option'); const parts = stu.split(' '); const name = parts.length > 1 ? parts[1] : parts[0]; option.value = name; option.innerText = stu; studentSelect.appendChild(option); }); } else { studentSelect.disabled = true; }
-        });
-
-        // --- 5. 類別定義 (FinishLine, Confetti, Particle, Weather, Objects) ---
         class FinishLine {
             constructor() { this.x = canvasWidth; this.y = 0; this.width = 100; this.crossed = false; }
             update() { this.x -= speed * speedMultiplier; }
@@ -862,16 +843,38 @@
             constructor() {
                 this.scale = 0.6; this.width = 120 * this.scale; this.height = 100 * this.scale; this.x = canvasWidth * 0.15; this.y = groundHeight - this.height;
                 this.vy = 0; this.weight = 2.5; this.jumpStrength = -28; this.isJumping = false; this.frame = 0;
-                this.useImage = false; this.runImg1 = new Image(); this.runImg2 = new Image(); this.jumpImg = new Image();
-                this.runImg1.src = 'horse_run1.png'; this.runImg2.src = 'horse_run2.png'; this.jumpImg.src = 'horse_jump.png';
-                const checkLoad = () => this.checkImages(); const handleError = () => { this.useImage = false; let statusDiv = document.getElementById('img-status'); if(statusDiv) statusDiv.innerText = "圖片缺失或錯誤，使用手繪模式"; };
-                this.runImg1.onload = checkLoad; this.runImg2.onload = checkLoad; this.jumpImg.onload = checkLoad;
-                this.runImg1.onerror = handleError; this.runImg2.onerror = handleError; this.jumpImg.onerror = handleError;
+                
+                // 這裡改用預載好的圖片
+                this.useImage = true;
+                this.runImg1 = loadedImages.run1;
+                this.runImg2 = loadedImages.run2;
+                this.jumpImg = loadedImages.jump;
             }
-            checkImages() { if (this.runImg1.complete && this.runImg1.naturalWidth > 0 && this.runImg2.complete && this.runImg2.naturalWidth > 0 && this.jumpImg.complete && this.jumpImg.naturalWidth > 0) { this.useImage = true; let statusDiv = document.getElementById('img-status'); if(statusDiv) statusDiv.innerText = "圖片加載成功！(動畫模式)"; } }
+            
+            checkImages() { return true; }
+
             update() { this.vy += this.weight; this.y += this.vy; if (this.y > groundHeight - this.height) { this.y = groundHeight - this.height; this.vy = 0; this.isJumping = false; } this.frame++; }
+            
             draw() {
-                if (this.useImage) { try { ctx.save(); let currentImg; if (this.isJumping) { currentImg = this.jumpImg; } else { currentImg = (Math.floor(this.frame / 6) % 2 === 0) ? this.runImg1 : this.runImg2; } if (currentImg && currentImg.width > 0) { let drawW = 150; let drawH = 150 * (currentImg.height / currentImg.width); if (!isFinite(drawH)) drawH = 100; let drawY = this.y - 30; let bounce = this.isJumping ? 0 : Math.sin(this.frame * 0.8) * 3; ctx.drawImage(currentImg, this.x, drawY + bounce, drawW, drawH); } else { this.drawVectorHorse(); } ctx.restore(); } catch (e) { this.useImage = false; this.drawVectorHorse(); } } else { this.drawVectorHorse(); }
+                try {
+                    ctx.save(); 
+                    let currentImg; 
+                    if (this.isJumping) { currentImg = this.jumpImg; } else { currentImg = (Math.floor(this.frame / 6) % 2 === 0) ? this.runImg1 : this.runImg2; }
+                    
+                    if (currentImg && currentImg.complete && currentImg.naturalWidth > 0) { 
+                        let drawW = 150; let drawH = 150 * (currentImg.height / currentImg.width); 
+                        if (!isFinite(drawH)) drawH = 100; 
+                        let drawY = this.y - 30; 
+                        let bounce = this.isJumping ? 0 : Math.sin(this.frame * 0.8) * 3; 
+                        ctx.drawImage(currentImg, this.x, drawY + bounce, drawW, drawH); 
+                    } else { 
+                        this.drawVectorHorse(); 
+                    } 
+                    ctx.restore();
+                } catch (e) { 
+                    console.error("Draw error:", e);
+                    this.drawVectorHorse(); 
+                }
             }
             drawVectorHorse() {
                 ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.scale, this.scale); ctx.fillStyle = '#050505'; ctx.strokeStyle = '#050505'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -908,7 +911,95 @@
             }
         }
 
-        // --- 6. 遊戲邏輯與主循環 ---
+        // --- 6. 遊戲與選單邏輯 ---
+        const studentDB = {
+            "1A": ["1 陳熹雋","2 陳意衡","3 陳彥君","4 陳楚皓","5 陳彥羲","6 侯林菲","7 許皓琳","8 黃煜軒","9 關旨荇","10 劉卓瀅","11 劉仲宇","12 羅卓熙","13 李芯悦","14 呂俊霖","15 呂仲軒","16 吳諾兒","17 彭梓悦","18 施鈞源","19 孫子豪","20 曾以仁","21 曹正","22 王天宇","23 王柏諾","24 胡悦翹"],
+            "1B": ["1 陳曉瑩","2 陳梓韜","3 陳永昇","4 陳悅心","5 張峻烽","6 蔡宏鑫","7 朱灝喆","8 何允恒","9 韓欣穎","10 叶宇恒","11 江泳琳","12 關明菲","13 鄺雪晴","14 劉芊汝","15 羅復希","16 李俊霆","17 李鎧","18 梁凱淇","19 巫恒逸","20 柯芷晴","21 蘇智泓","22 曾鋭彬","23 尹梓言","24 胡梓榣","25 丘文博","26 朱鑠穎"],
+            "1C": ["1 歐陽子朗","2 周柏橋","3 鄭浚東","4 張洛頤","5 張允謙","6 朱善鋐","7 洪永灃","8 葉愷晴","9 江澤楷","10 江泳婷","11 郭曉靜","12 林芊玥","13 劉子儀","14 李卓諾","15 李柏翱","16 梁心巧","17 梁逸熹","18 危逸辰","19 潘承鈞","20 蕭雨彤","21 譚愷瑤","22 譚丞竣","23 田晞潼","24 王樂澄","25 黃子軒","26 王梓然","27 葉芷晴"],
+            "1D": ["1 陳振軒","2 陳晞","3 陳柏熹","4 陳宏信","5 張睎童","6 周羲和","7 徐朗睎","8 方俊熹","9 方梓喬","10 江徽","11 郭又嘉","12 劉淳浠","13 梁靖堯","14 李祉諾","15 林詩穎","16 廖心瑜","17 盧曉怡","18 顏孝善","19 鄧先喻","20 鄧芷珺","21 謝泓泰","22 童衍嘉","23 黃煦昡","24 吳嘉鋭","25 楊善雯","26 姚芊語"],
+            "1E": ["1 陳希霖","2 陳晞瑜","3 陳君業","4 陳溰琳","5 陳星宇","6 鄭子榆","7 馮晞童","8 何鉦霆","9 許正翹","10 郭柏希","11 郭柏喬","12 林嘉慧","13 羅敏芫","14 梁天豪","15 連尉𧧽","16 盧心怡","17 勞以曈","18 莫彥博","19 潘柏皓","20 鄧雨晴","21 蔡竣軒","22 黃晉謙","23 黃詩淇","24 胡凱藍","25 顏嘉希","26 楊樂軒"],
+            "2A": ["1 陳信希","2 陳宥銘","3 鄒嘉柔","4 鄭雅之","5 張予寧","6 馮朗華","7 何旻蔚","8 何梓嫣","9 許若楠","10 林捷然","11 林陽曦","12 李卓斐","13 梁昊","14 梁凱媃","15 廖凱漩","16 勞君婷","17 馬鉦博","18 伍灝然","19 蕭玥呈","20 曾恩陶","21 王祐辰","22 黃玳嘉","23 黃彥熹","24 楊旻彧","25 葉芷藴"],
+            "2B": ["1 陳雋禮","2 陳柏霖","3 陳瑋楠","4 陳穎澄","5 鄭皓文","6 張峻僑","7 錢玟謙","8 鍾振耀","9 何籽齊","10 何芷奷","11 林允兒","12 劉星宇","13 李晞雒","14 李芯潁","15 梁雅兒","16 梁心怡","17 盧靖方","18 麥雅淇","19 吳家賢","20 孫鎧霖","21 曾夢歡","22 黃梓朗","23 謝樂懿","24 嚴敏瑜","25 余芊潼"],
+            "2C": ["1 陳家博","2 陳佰僑","3 陳楚伊","4 鄭懿睿","5 張芷僑","6 張日曦","7 蔡子言","8 朱晉賢","9 朱詠珊","10 鍾禮賢","11 侯佩兒","12 管諾賢","13 郭昊洋","14 黎子謙","15 劉昊均","16 劉浚鋐","17 李諾頤","18 梁琋雯","19 林新珊","20 劉梓潼","21 吳綽瀅","22 譚紫寧","23 王羨妤","24 黃庭謙","25 鍾浩鈱"],
+            "2D": ["1 區晉樑","2 陳瀞希","3 陳凱淳","4 陳鎧賢","5 張鈞琳","6 馮凱琳","7 林雅雯","8 林蔣沂","9 劉玥澄","10 羅浩言","11 李溵喬","12 梁澤仁","13 李靖頤","14 林烱烽","15 呂綽瑤","16 毛羿巽","17 吳憲峰","18 石芮霖","19 曾禮賢","20 王儒悦","21 胡錦天","22 王暟瞳","23 胡梓筠","24 伍彥潮","25 余思穎"],
+            "2E": ["1 歐希彤","2 陳梓昊","3 陳芷琳","4 張司宇","5 張煒傑","6 張恩僑","7 趙浩軒","8 戴嘉瑩","9 嚴崇灝","10 葉文晞","11 黎爾澄","12 黎爾謙","13 梁栢睿","14 李依娜","15 連珝㞩","16 巫倬鋒","17 戴晞然","18 譚竣軒","19 鄧康瑤","20 黃千睿","21 黃寶儀","22 黃梓謙","23 吳妤諳","24 葉美琳","25 朱晨曦"],
+            "3A": ["1 陳家淳","2 張薾晨","3 張景軒","4 何沛靈","5 何韻瀅","6 關羨錤","7 林善瑩","8 李朗棋","9 李庭欣","10 梁可榆","11 林雅婷","12 吳智琛","13 吳愷恩","14 吳葉恆","15 歐航瑋","16 蘇逸朗","17 施善文","18 唐婉宜","19 曾卓謙","20 黃頌謙","21 王煦霖","22 黃贊殷","23 黃一陽","24 胡蓁翹","25 余沛凝"],
+            "3B": ["1 陳浠婷","2 陳灝斌","3 張樾","4 蔡海澄","5 周望舒","6 鄧渲穎","7 熊梓喬","8 關詠琳","9 黎熙桐","10 林柏宇","11 劉瀰","12 劉柏希","13 梁語軒","14 馬熙雯","15 吳思言","16 彭映雪","17 潘朗楷","18 黃覓颻","19 黃小洹","20 黃天信","21 王梓謙","22 王梓穎","23 胡凱澄","24 邱彥楟","25 葉栢廷"],
+            "3C": ["1 陳逸朗","2 張允嵐","3 莊鎧溢","4 馮卓賢","5 郭睿捷","6 簡芷桐","7 林善晴","8 林紫堯","9 劉睿軒","10 李祉誼","11 連信言","12 廖望正","13 羅啟晉","14 蕭梓淇","15 孫苡澄","16 施靜嵐","17 鄧允然","18 曾天佑","19 王煦霆","20 黃家熙","21 胡善之","22 楊樂昕","23 葉愷晴","24 葉蘊瑤","25 庾凱舒"],
+            "3D": ["1 陳晉燊","2 陳思霖","3 鍾俊賢","4 戴沛銘","5 何韻妍","6 黎允皓","7 黎昕潼","8 林心賢","9 李紫盈","10 梁澤栩","11 梁詩諾","12 梁圓圓","13 連家晴","14 林晴嵐","15 陸穎琳","16 龍允澄","17 顏沛怡","18 潘景康","19 潘睿晞","20 施澤仁","21 戴焯言","22 杜國維","23 黃子俊","24 楊靖泓","25 楊心蕊"],
+            "3E": ["1 查奕森","2 陳詠芯","3 陳殷霆","4 陳雨晴","5 周穎熙","6 鄭芷瀅","7 張閔程","8 霍柏彥","9 葉亦翔","10 黎昕澄","11 利卓羽","12 李芊澄","13 梁卓謙","14 李俊賢","15 李凱澄","16 羅德蔚","17 吳泳姸","18 潘承耀","19 譚沛林","20 黃頌然","21 胡旻慧","22 胡嘉濠","23 楊靖","24 鄭雅予"],
+            "4A": ["1 陳卓瑩","2 陳信佑","3 陳靖欣","4 鄭多宏","5 張綽祐","6 朱沛翹","7 方梓晴","8 康柏熙","9 許珮筠","10 許紫桐","11 洪鎮堯","12 簡希而","13 林泳桐","14 李淽玥","15 李廷熙","16 梁家浠","17 陸思慧","18 梁澤琛","19 麥梓琳","20 吳子睿","21 柯溍貽","22 潘奕匡","23 潘奕霖","24 湯梓峰","25 黃知恩","26 黃浚銘","27 吳婧言","28 吳婧煊","29 吳思博","30 余孝賢","31 袁浚熙"],
+            "4B": ["1 陳奕廷","2 鄭朗軒","3 張渼偲","4 張子浩","5 賀致堯","6 何旻蒑","7 許皓泓","8 林奕仲","9 林玥瑩","10 劉映汝","11 羅瑋霖","12 李瑋澄","13 梁景熹","14 梁詠欣","15 梁漪桓","16 李樂懿","17 梁恩浠","18 羅鎧晴","19 呂清妍","20 馬昊燊","21 湯鎮銘","22 田晞樂","23 唐嘉禧","24 尹樂恩","25 王梓琪","26 王熙雯","27 王汶僖","28 吳子朗","29 邱家樂","30 邱彥竣","31 楊子渘"],
+            "4C": ["1 陳見之","2 陳樂熙","3 錢巧霖","4 蔡清妍","5 蔡焌軒","6 周彥彤","7 關宗灝","8 奚梓麟","9 鄧諾文","10 郭俞彤","11 賴至誠","12 黎祉樂","13 林國言","14 李昕熹","15 梁晞妍","16 梁宇霆","17 吳卓言","18 吳沛珊","19 譚安喬","20 曾宇哲","21 黃寶謙","22 楊心妤","23 楊穎芯","24 楊祐安"],
+            "4D": ["1 陳俊凱","2 陳彥彤","3 鄭丞超","4 鄭穎恆","5 張榆澄","6 朱俊朗","7 洪力蔭","8 林泳彤","9 劉芷瑤","10 李洋愷","11 梁芷悠","12 蘇俊皓","13 施明雅","14 戴焯諾","15 譚楚桐","16 湯詠賢","17 曹子玥","18 黃琸舜","19 黃天嵐","20 黃逸翹","21 楊晟軒","22 楊景匡","23 邢維丞","24 翁奕琳"],
+            "4E": ["1 區竣睎","2 陳凱珮","3 陳詩穎","4 陳彥希","5 鄒家謙","6 鄭子諾","7 張浚杭","8 何敏嘉","9 羅卓謙","10 盧佳琪","11 伍偉庭","12 柯鈞諾","13 潘英貴","14 蘇凱潼","15 謝心弦","16 黃嘉欣","17 黃柏陶","18 黃梓晴","19 黃子誠","20 吳思橋"],
+            "5A": ["1 陳頌錡","2 陳淏揚","3 陳滶銘","4 陳思羽","5 鄭婥妤","6 趙恩彤","7 曹子錀","8 蔡子瑩","9 何思齊","10 郭靜瑩","11 郭幸兒","12 郭君睿","13 林迪文","14 梁卓然","15 李顯揚","16 李星慧","17 羅泳雅","18 盧妍孜","19 呂洛恒","20 馬曉晴","21 馬梓崴","22 歐恩貝","23 邱芊羽","24 譚知行","25 鄧司鉉","26 曾靖嵐","27 曾柏軒","28 吳金麟","29 胡定駱","30 楊玥瑩","31 翁浚皓","32 張銘曉"],
+            "5B": ["1 陳子悠","2 周雋希","3 鄭儲邦","4 莊浠瑩","5 夏子弘","6 賀子宸","7 許峻灝","8 林浩軒","9 林嘉敏","10 李卓珈","11 李俊逸","12 李朗達","13 李宇謙","14 李加敏","15 李允捷","16 廖幸兒","17 劉可兒","18 吳朗瑜","19 伍慧珊","20 岑可翹","21 孫銘浠","22 譚棨燊","23 譚應軒","24 曾慶洛","25 黃卓妤","26 黃承晞","27 黃梓欣","28 黃詠心","29 袁崇曦","30 周梓瑜"],
+            "5C": ["1 陳熹姸","2 陳瑋灝","3 陳昱霖","4 鄭哲","5 張嘉妤","6 鄒卓喬","7 鄺可喬","8 黎凱甄","9 黎子鏗","10 林思彤","11 劉佩祺","12 劉芷萱","13 李思瑤","14 盧鴻宇","15 盧思羽","16 曾瀚賢","17 徐羨喬","18 黃琸堯","19 黃芯諾","20 黃維博","21 黃雨桐","22 胡啓湸","23 胡倩瑋","24 楊舜之"],
+            "5D": ["1 陳凱恩","2 陳立喬","3 陳敏軒","4 陳茂凱","5 鄭奕飛","6 錢凱晴","7 蔡俊添","8 周青陽","9 周瑞蕎","10 鍾禮謙","11 戴嘉禧","12 何靖喬","13 何芷源","14 郭臨","15 林家而","16 林健銘","17 李卓穎","18 李凱宇","19 馬綽嬣","20 馬琝傑","21 馬恩悦","22 莫梓妤","23 吳芷盈","24 伍思妍","25 葉思朗","26 楊若萱"],
+            "5E": ["1 陳駿豪","2 陳芝敏","3 張怡禎","4 張怡萱","5 蔡卓翹","6 方栢宇","7 符碩軒","8 何家瑩","9 黃健彬","10 許悅","11 林思辰","12 林禹軒","13 羅婉瑩","14 李翊行","15 梁心盈","16 李姵賢","17 麥俊仁","18 譚暘霖","19 黃晉熹","20 王晧恩","21 邱炫智","22 楊浩程"],
+            "6A": ["1 陳泓俊","2 陳思成","3 張綽軒","4 張筱攸","5 程頌兒","6 周芷萱","7 周子祐","8 馮智譽","9 許樂媛","10 許心淇","11 洪巧恩","12 龔均曈","13 黎鐘澤","14 賴家敏","15 黎子芊","16 黎子萱","17 劉天溵","18 梁晨","19 梁詠嵐","20 李俊禧","21 李樂怡","22 林煇皓","23 廖望哲","24 吳承熹","25 潘茵彤","26 蕭梓諾","27 蕭仲言","28 施瀛鈞","29 鄧旨峻","30 黃卓文","31 黃苡喬","32 吳子君","33 鄭力中"],
+            "6B": ["1 區永揚","2 陳宏瑋","3 張浚一","4 張駿朗","5 張凱晴","6 張凱喬","7 張梓淳","8 張芷熒","9 蔡卓侖","10 鍾希兒","11 方心頤","12 何沛陞","13 葉景軒","14 郭千琬","15 郭倚彤","16 林樂恩","17 劉康佑","18 李曉琳","19 李瀚泓","20 林奕澍","21 羅琸嵐","22 龍洛蜂","23 曾梓傑","24 蔡永匡","25 尹佟恩","26 黃希瞳","27 黃可頤","28 黃贊臣","29 黃偉睿","30 吳璟悠"],
+            "6C": ["1 陳鎧廷","2 陳欣彤","3 周啟豪","4 鄭凱沂","5 張梓烽","6 趙梓希","7 趙慧喬","8 許願","9 林汶進","10 羅嘉悠","11 李智庭","12 梁雲姿","13 李芊慧","14 羅曦婷","15 伍君昊","16 鄧鈞朗","17 黃駿佑","18 黃思澄","19 吳政鋭","20 袁凱霖","21 翁奕熙"],
+            "6D": ["1 陳芷瑜","2 張浩揚","3 張晨曦","4 張映澄","5 鄒本騫","6 鍾峻熙","7 柯繼然","8 江俊曦","9 郭甯","10 林昱丞","11 李湚頤","12 梁文晞","13 李悅曦","14 呂柏軒","15 沙婉如","16 譚紫悦","17 鄧宇政","18 丁健悠","19 董穎天","20 黃健朗","21 胡浚鴻"],
+            "6E": ["1 陳倚盈","2 陳宇軒","3 鄭瑞豐","4 張晞瑜","5 張梓希","6 林曉婷","7 林梓慧","8 李承禧","9 李家興","10 林新杰","11 雷梓希","12 吳綽鎧","13 王鳳賢","14 王國南","15 黃致肇","16 黃鎮熙","17 黃振庭","18 楊希昕","19 葉子逸"]
+        };
+
+        const idioms = [
+            { text: "馬到功成", desc: "形容事情順利，一開始就取得成功。" },
+            { text: "龍馬精神", desc: "形容精神健旺、充沛。" },
+            { text: "老馬識途", desc: "比喻閱歷多的人富有經驗，熟悉情況，能起引導作用。" },
+            { text: "一馬當先", desc: "作戰時策馬衝鋒在前。形容領先，帶頭。" },
+            { text: "萬馬奔騰", desc: "聲勢浩大或場面熱烈。" },
+            { text: "千里馬", desc: "原指善跑的駿馬，後比喻有才幹的人。" }
+        ];
+
+        const classSelect = document.getElementById('class-select');
+        const studentSelect = document.getElementById('student-select');
+        const customInput = document.getElementById('custom-name-input');
+        
+        // 加入自訂選項
+        const customOption = document.createElement('option');
+        customOption.value = "custom";
+        customOption.innerText = "--- 自訂 ---";
+        classSelect.appendChild(customOption);
+
+        Object.keys(studentDB).forEach(cls => { 
+            const option = document.createElement('option'); 
+            option.value = cls; 
+            option.innerText = cls; 
+            classSelect.appendChild(option); 
+        });
+
+        classSelect.addEventListener('change', function() {
+            const selectedClass = this.value;
+            
+            if (selectedClass === "custom") {
+                // 自訂模式
+                studentSelect.style.display = "none";
+                customInput.style.display = "block";
+                customInput.value = "";
+                customInput.focus();
+                studentSelect.disabled = true;
+            } else {
+                // 一般模式
+                studentSelect.style.display = "block";
+                customInput.style.display = "none";
+                studentSelect.innerHTML = '<option value="" disabled selected>請選擇姓名</option>';
+                studentSelect.disabled = false;
+                
+                if (studentDB[selectedClass]) {
+                    studentDB[selectedClass].forEach(stu => { 
+                        const option = document.createElement('option'); 
+                        const parts = stu.split(' '); 
+                        const name = parts.length > 1 ? parts[1] : parts[0]; 
+                        option.value = name; 
+                        option.innerText = stu; 
+                        studentSelect.appendChild(option); 
+                    });
+                }
+            }
+        });
 
         function initGame(forceType) {
             horse = new Horse();
@@ -922,15 +1013,18 @@
             rushStage = 0; 
             finishLine = null; 
             
+            document.getElementById('rank-display').innerText = "";
+            
             let statusDiv = document.getElementById('img-status');
             if(statusDiv) {
-                statusDiv.innerText = "圖片狀態: 檢查中...";
-                statusDiv.style.color = "#888";
-                statusDiv.style.fontWeight = "normal";
-                statusDiv.style.textShadow = "none";
+                if(imagesLoadedCount === totalImages) {
+                    statusDiv.innerText = "圖片狀態: 載入完成";
+                    statusDiv.style.color = "#27ae60";
+                } else {
+                    statusDiv.innerText = "圖片狀態: 檢查中...";
+                }
             }
 
-            // 背景選擇邏輯
             let type = forceType;
             if (!type || type === 'random') {
                 const weathers = ['sunny', 'rain', 'snow', 'night', 'autumn']; 
@@ -944,34 +1038,61 @@
             if(horse.checkImages) horse.checkImages();
         }
 
-        function playTone(freq, type) {
-            try {
-                if (audioCtx.state === 'suspended') audioCtx.resume();
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = type;
-                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.1);
-            } catch (e) {
-                console.warn("Audio play failed:", e);
+        function startGame() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const classSelect = document.getElementById('class-select');
+            const studentSelect = document.getElementById('student-select');
+            const customInput = document.getElementById('custom-name-input');
+            const bgSelect = document.getElementById('bg-select'); 
+            
+            const selectedClass = classSelect.value;
+            const selectedBg = bgSelect.value; 
+            
+            if (selectedClass === "custom") {
+                let name = customInput.value.trim();
+                if (!name) { alert("請輸入自訂姓名！"); return; }
+                currentPlayerName = "自訂: " + name;
+            } else {
+                const selectedName = studentSelect.value;
+                if (!selectedName) { 
+                    currentPlayerName = ""; 
+                } else {
+                    currentPlayerName = selectedClass + " " + selectedName;
+                }
             }
-        }
+            
+            document.getElementById('player-name-display').innerText = currentPlayerName;
 
-        function playWinSound() {
-            setTimeout(() => playTone(400, 'sine'), 0);
-            setTimeout(() => playTone(500, 'sine'), 200);
-            setTimeout(() => playTone(800, 'sine'), 400);
-        }
+            classSelect.blur();
+            studentSelect.blur();
+            customInput.blur();
+            bgSelect.blur(); 
+            if (document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur();
+            }
 
-        function playFailSound() {
-            setTimeout(() => playTone(200, 'sawtooth'), 0);
-            setTimeout(() => playTone(150, 'sawtooth'), 300);
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('end-screen').classList.add('hidden');
+            
+            initGame(selectedBg);
+            
+            isPlaying = true;
+            lastTime = 0;
+            animate(0);
         }
+        window.startGame = startGame;
+
+        function resetGame() {
+            if (document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur();
+            }
+            document.getElementById('end-screen').classList.add('hidden');
+            document.getElementById('player-name-display').innerText = ""; 
+            
+            document.getElementById('start-screen').classList.remove('hidden');
+        }
+        window.resetGame = resetGame;
 
         function animate(timeStamp) {
             try {
@@ -980,7 +1101,6 @@
 
                 if (!isPlaying) return;
 
-                // --- 畫面震動效果 (最後50米) ---
                 let currentDist = Math.floor(score/5);
                 let shakeX = 0;
                 let shakeY = 0;
@@ -992,7 +1112,6 @@
 
                 ctx.clearRect(0, 0, canvasWidth, canvasHeight);
                 
-                // 應用震動
                 ctx.save();
                 ctx.translate(shakeX, shakeY);
 
@@ -1029,7 +1148,7 @@
                                     statusDiv.innerText = "⚡️ 最後50米！極限反應！";
                                     statusDiv.style.color = "#9b59b6"; 
                                     statusDiv.style.fontWeight = "bold";
-                                    statusDiv.style.fontSize = "2rem"; /* 加大提示文字 */
+                                    statusDiv.style.fontSize = "2rem"; 
                                     statusDiv.style.textShadow = "0px 0px 10px #fff"; 
                                 }
                             }
@@ -1044,7 +1163,7 @@
                                     statusDiv.innerText = "🔥 最後衝刺！小心障礙！";
                                     statusDiv.style.color = "#d62828"; 
                                     statusDiv.style.fontWeight = "bold";
-                                    statusDiv.style.fontSize = "2rem"; /* 加大提示文字 */
+                                    statusDiv.style.fontSize = "2rem";
                                 }
                             }
                             minGap = 28; 
@@ -1100,7 +1219,6 @@
                 weatherSystem.update();
                 weatherSystem.draw();
 
-                // 恢復畫布狀態
                 ctx.restore();
 
                 if (isPlaying) {
@@ -1111,7 +1229,6 @@
                 let displayDist = Math.min(currentDist, targetScore);
                 document.getElementById('score-display').innerText = `距離: ${displayDist} 米`;
 
-                // 基礎速度與擾動
                 speedMultiplier = 1 + (score * 0.001); 
                 
                 if (currentDist >= 450) {
@@ -1126,55 +1243,6 @@
                 isPlaying = false; 
             }
         }
-
-        function startGame() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            
-            const classSelect = document.getElementById('class-select');
-            const studentSelect = document.getElementById('student-select');
-            const bgSelect = document.getElementById('bg-select'); // 獲取背景選擇
-            
-            const selectedClass = classSelect.value;
-            const selectedName = studentSelect.value;
-            const selectedBg = bgSelect.value; // 獲取選擇的值
-
-            if (selectedClass && selectedName) {
-                currentPlayerName = selectedClass + " " + selectedName;
-            } else {
-                currentPlayerName = ""; 
-            }
-            
-            document.getElementById('player-name-display').innerText = currentPlayerName;
-
-            classSelect.blur();
-            studentSelect.blur();
-            bgSelect.blur(); // 移除焦點
-            if (document.activeElement instanceof HTMLElement) {
-                document.activeElement.blur();
-            }
-
-            document.getElementById('start-screen').classList.add('hidden');
-            document.getElementById('end-screen').classList.add('hidden');
-            
-            // 將選擇的背景傳入初始化函數
-            initGame(selectedBg);
-            
-            isPlaying = true;
-            lastTime = 0;
-            animate(0);
-        }
-        window.startGame = startGame;
-
-        function resetGame() {
-            if (document.activeElement instanceof HTMLElement) {
-                document.activeElement.blur();
-            }
-            document.getElementById('end-screen').classList.add('hidden');
-            document.getElementById('player-name-display').innerText = ""; 
-            
-            document.getElementById('start-screen').classList.remove('hidden');
-        }
-        window.resetGame = resetGame;
 
         function gameOver(isWin) {
             isPlaying = false;
@@ -1193,7 +1261,6 @@
                 title.style.color = "#d62828"; 
                 if (currentPlayerName) {
                     scoreText.innerText = `恭喜 ${currentPlayerName} 到達了 ${targetScore} 米終點！`;
-                    // --- 儲存到排行榜 ---
                     saveRecord(currentPlayerName, targetScore);
                 } else {
                     scoreText.innerText = `恭喜你到達了 ${targetScore} 米終點！`;
@@ -1205,7 +1272,6 @@
                 let finalScore = Math.min(Math.floor(score/5), targetScore);
                 if (currentPlayerName) {
                     scoreText.innerText = `${currentPlayerName} 本次奔跑距離：${finalScore} 米`;
-                    // 未過關也上傳
                     if (finalScore > 0) saveRecord(currentPlayerName, finalScore);
                 } else {
                     scoreText.innerText = `本次奔跑距離：${finalScore} 米`;
