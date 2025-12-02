@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>水墨奔騰迎錦泰</title>
+
+    <!-- 1. 引入 Firebase Compat SDK (確保在任何環境都能載入) -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+TC:wght@400;700&display=swap');
 
@@ -219,6 +225,17 @@
             animation: breathe 5s ease-in-out infinite;
         }
 
+        /* 排名顯示文字 */
+        #rank-display {
+            margin-top: 15px;
+            font-size: 2rem;
+            font-weight: bold;
+            min-height: 40px;
+            font-family: 'Noto Serif TC', serif;
+            color: #d35400;
+            text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
+        }
+
         @keyframes breathe {
             0% { transform: scale(1); opacity: 0.85; filter: blur(0.5px); }
             50% { transform: scale(1.03); opacity: 1; filter: blur(0px); }
@@ -256,6 +273,7 @@
             text-align: right;
         }
 
+        /* --- 排行榜樣式 --- */
         #leaderboard-layer {
             background: rgba(253, 251, 247, 0.98);
         }
@@ -303,8 +321,9 @@
         .rank-3 .rank-num { color: #cd7f32; font-size: 1.3rem; text-shadow: 1px 1px 0px #a0522d; }
 
         .rank-num { font-weight: bold; width: 40px; text-align: center; font-family: 'Ma Shan Zheng', cursive; }
-        .rank-name { flex-grow: 1; padding-left: 10px; }
-        .rank-score { font-weight: bold; color: #d62828; }
+        .rank-name { flex-grow: 1; padding-left: 10px; text-align: left;}
+        .rank-score { font-weight: bold; color: #d62828; width: 80px; text-align: right;}
+        .badge { margin-left: 5px; font-size: 1.2rem; }
 
         .clear-btn { background: none; border: none; color: #999; font-size: 0.8rem; margin-top: 5px; cursor: pointer; text-decoration: underline; }
 
@@ -363,6 +382,10 @@
         <div id="end-screen" class="ui-layer hidden">
             <h2 id="end-title">馬到功成</h2>
             <p id="end-score">奔跑距離：計算中...</p> 
+            
+            <!-- 新增：排名顯示 -->
+            <div id="rank-display"></div>
+
             <div class="idiom-box">
                 <strong id="idiom-text" style="font-size: 1.8rem; display:block; margin-bottom:10px;">龍馬精神</strong>
                 <span id="idiom-desc" style="font-size: 1rem;">形容精神健旺、充沛。</span>
@@ -373,8 +396,9 @@
             </div>
         </div>
 
+        <!-- 排行榜畫面 -->
         <div id="leaderboard-layer" class="ui-layer hidden">
-            <h2>🏆 排行榜</h2>
+            <h2>🏆 排行榜 (前20名)</h2>
             <p style="margin-bottom: 10px;">誰是真正的千里馬？</p>
             <div class="leaderboard-container">
                 <div class="leaderboard-header">
@@ -382,21 +406,22 @@
                     <span>姓名</span>
                     <span>距離</span>
                 </div>
-                <div id="leaderboard-list"><div style='text-align:center; padding:20px; color:#888;'>連線中...</div></div>
+                <div id="leaderboard-list"><div style='text-align:center; padding:20px; color:#888;'>載入中...</div></div>
             </div>
             <button class="btn" onclick="window.closeLeaderboard()">返回</button>
             <button class="clear-btn" onclick="window.clearLeaderboard()">清除記錄 (教師用)</button>
         </div>
     </div>
 
-    <!-- 主要遊戲邏輯 (標準 Script，確保離線可用) -->
     <script>
+        // --- 1. 初始化全域變數與設定 ---
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
         let canvasWidth, canvasHeight;
         let groundHeight;
+        
         let isPlaying = false;
         let gameFrame = 0;
         let score = 0;
@@ -406,6 +431,7 @@
         let rushStage = 0; 
         let finishLine = null; 
         let currentPlayerName = ""; 
+        
         let horse;
         let obstacles = [];
         let particles = [];
@@ -416,55 +442,244 @@
         let spawnTimer = 0;
         let lastTime = 0;
 
-        // 預設的本地儲存介面 (將被 Firebase 模組覆蓋)
-        window.useCloud = false; 
-        window.saveRecordFunc = function(name, distance) {
-            let records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
-            records.push({ name: name, score: distance, timestamp: new Date().toISOString() });
-            records.sort((a, b) => b.score - a.score);
-            if(records.length > 50) records = records.slice(0, 50);
-            localStorage.setItem('horseGame_leaders', JSON.stringify(records));
+        // Firebase 變數
+        let db = null;
+        let auth = null;
+        let useCloud = false;
+        const APP_ID = 'horse-racing-2026';
+
+        // --- 2. 初始化 Firebase (Compat Mode) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCdXs8koAE6yHcFlpn_AUwd-CVIra_JHeI",
+            authDomain: "horse-953b3.firebaseapp.com",
+            projectId: "horse-953b3",
+            storageBucket: "horse-953b3.firebasestorage.app",
+            messagingSenderId: "544698080960",
+            appId: "1:544698080960:web:6da549f79dadcc4ca8d725",
+            measurementId: "G-THQY7C7JKF"
         };
+
+        try {
+            if (typeof firebase !== 'undefined') {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                auth = firebase.auth();
+
+                auth.onAuthStateChanged((user) => {
+                    if (user) {
+                        console.log("Cloud Mode Active");
+                        useCloud = true;
+                        
+                        // 覆寫為雲端函數
+                        window.saveRecord = function(name, distance) {
+                            // 距離上限 500米
+                            let finalDistance = Math.min(distance, 500);
+                            
+                            db.collection('artifacts').doc(APP_ID).collection('leaderboard').add({
+                                name: name, score: finalDistance, timestamp: new Date().toISOString()
+                            }).then(() => {
+                                // 存檔後查詢排名
+                                checkMyRank(name, finalDistance);
+                            }).catch(e => console.error("Cloud save error", e));
+                        };
+
+                        window.showLeaderboard = function() {
+                            document.getElementById('leaderboard-layer').classList.remove('hidden');
+                            document.getElementById('leaderboard-list').innerHTML = "<div style='text-align:center; padding:20px; color:#888;'>載入中...</div>";
+                            
+                            // 抓取足夠資料以進行本地排名運算
+                            db.collection('artifacts').doc(APP_ID).collection('leaderboard')
+                              .orderBy('score', 'desc').limit(100) 
+                              .onSnapshot((snapshot) => {
+                                  let records = [];
+                                  snapshot.forEach(doc => records.push(doc.data()));
+                                  renderLeaderboard(records);
+                              }, (error) => {
+                                  console.error("Cloud load error", error);
+                                  const localRec = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
+                                  renderLeaderboard(localRec);
+                              });
+                        };
+                        
+                        window.checkMyRank = function(name, distance) {
+                             db.collection('artifacts').doc(APP_ID).collection('leaderboard')
+                              .orderBy('score', 'desc').get().then(snapshot => {
+                                  let records = [];
+                                  snapshot.forEach(doc => records.push(doc.data()));
+                                  // 計算排名
+                                  let rank = calculateRank(records, name, distance);
+                                  displayRankResult(rank);
+                              });
+                        };
+
+                        window.clearLeaderboard = function() {
+                            if(confirm("確定要清除所有雲端記錄嗎？")) {
+                                 db.collection('artifacts').doc(APP_ID).collection('leaderboard').get().then(snapshot => {
+                                     snapshot.forEach(doc => doc.ref.delete());
+                                     alert("雲端記錄已清除");
+                                 }).catch(e => alert("清除失敗"));
+                            }
+                        };
+
+                    } else {
+                        auth.signInAnonymously().catch(e => console.warn("Auth failed:", e));
+                    }
+                });
+            } else {
+                setupLocalFallback();
+            }
+        } catch (e) {
+            console.warn("Firebase init error, using local mode.", e);
+            setupLocalFallback();
+        }
         
-        window.renderLeaderboard = function(records) {
+        if(!useCloud) setupLocalFallback();
+
+        // --- 3. 輔助函數 (排行榜) ---
+
+        // 本地模式邏輯 (Fallback)
+        function setupLocalFallback() {
+            window.saveRecord = function(name, distance) {
+                let finalDistance = Math.min(distance, 500);
+                let records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
+                records.push({ name: name, score: finalDistance, timestamp: new Date().toISOString() });
+                localStorage.setItem('horseGame_leaders', JSON.stringify(records));
+                
+                checkMyRank(name, finalDistance, records);
+            };
+
+            window.showLeaderboard = function() {
+                const records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
+                renderLeaderboard(records);
+                document.getElementById('leaderboard-layer').classList.remove('hidden');
+            };
+            
+            window.checkMyRank = function(name, score) {
+                const records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
+                let rank = calculateRank(records, name, score);
+                displayRankResult(rank);
+            };
+            
+            window.clearLeaderboard = function() {
+                if(confirm("確定要清除本機記錄嗎？")) {
+                    localStorage.removeItem('horseGame_leaders');
+                    alert("已清除");
+                    renderLeaderboard([]);
+                }
+            };
+        }
+
+        // 核心排名算法 (緊湊排名 Dense Ranking + 500米並列第一)
+        function calculateRank(records, myName, myScore) {
+            // 1. 排序：分數高者前，同分則先到者前(timestamp)
+            records.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return new Date(a.timestamp) - new Date(b.timestamp);
+            });
+
+            let rank = -1;
+            let currentRank = 0;
+            let prevScore = -1;
+
+            for (let i = 0; i < records.length; i++) {
+                let rec = records[i];
+                
+                // 分數變動，名次+1
+                if (rec.score !== prevScore) {
+                    currentRank++;
+                }
+                // 500米強制第一
+                let effectiveRank = (rec.score >= 500) ? 1 : currentRank;
+                
+                prevScore = rec.score;
+
+                // 找到自己 (這裡用名字和分數比對，實際應用建議用 ID)
+                // 這裡簡單用 Name + Score + 最近的時間來判斷
+                if (rec.name === myName && rec.score === myScore) {
+                    rank = effectiveRank;
+                    // 為了避免重名問題，這裡找到第一個符合的就返回
+                    // 實務上應該在 saveRecord 時回傳 docId 來精確比對
+                    break; 
+                }
+            }
+            return rank;
+        }
+
+        function displayRankResult(rank) {
+            const rankDisplay = document.getElementById('rank-display');
+            if (rank > 0 && rank <= 20) {
+                rankDisplay.innerHTML = `太強了！目前排名第 <span style="font-size:2.5rem; color:#d62828; text-shadow: 2px 2px 0px #fff;">${rank}</span> 名 🏅`;
+            } else if (rank > 20) {
+                rankDisplay.innerText = `目前排名第 ${rank} 名 (未入前20)`;
+                rankDisplay.style.color = "#555";
+            } else {
+                rankDisplay.innerText = "未入榜，請再接再厲！";
+                rankDisplay.style.color = "#555";
+            }
+        }
+
+        function renderLeaderboard(records) {
             const listContainer = document.getElementById('leaderboard-list');
-            records.sort((a, b) => b.score - a.score);
-            records = records.slice(0, 50);
+            
+            // 排序
+            records.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return new Date(a.timestamp) - new Date(b.timestamp);
+            });
+
+            let currentRank = 0;
+            let prevScore = -1;
             let html = "";
+            let displayCount = 0;
+
+            for (let i = 0; i < records.length; i++) {
+                let rec = records[i];
+                
+                if (rec.score !== prevScore) {
+                    currentRank++;
+                }
+                
+                let rankToShow = (rec.score >= 500) ? 1 : currentRank;
+                
+                // 顯示限制：只顯示前 20 筆
+                if (displayCount >= 20) break;
+
+                let rankClass = "";
+                if (rankToShow === 1) rankClass = "rank-1";
+                else if (rankToShow === 2) rankClass = "rank-2";
+                else if (rankToShow === 3) rankClass = "rank-3";
+
+                let badge = (rec.score >= 500) ? '<span class="badge">🏅</span>' : '';
+
+                html += `
+                    <div class="leaderboard-item ${rankClass}">
+                        <span class="rank-num">${rankToShow}</span>
+                        <span class="rank-name">${rec.name || "無名氏"}${badge}</span>
+                        <span class="rank-score">${rec.score} 米</span>
+                    </div>
+                `;
+                
+                prevScore = rec.score;
+                displayCount++;
+            }
+
             if (records.length === 0) {
                 html = "<div style='text-align:center; padding:20px; color:#888;'>暫無記錄</div>";
-            } else {
-                records.forEach((rec, index) => {
-                    let rankClass = "";
-                    if (index === 0) rankClass = "rank-1"; if (index === 1) rankClass = "rank-2"; if (index === 2) rankClass = "rank-3";
-                    html += `<div class="leaderboard-item ${rankClass}"><span class="rank-num">${index + 1}</span><span class="rank-name">${rec.name || "無名氏"}</span><span class="rank-score">${rec.score} 米</span></div>`;
-                });
             }
             listContainer.innerHTML = html;
-        };
-
-        window.showLeaderboardFunc = function() {
-            const records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
-            window.renderLeaderboard(records);
-        };
+        }
         
-        window.clearLeaderboardFunc = function() {
-            localStorage.removeItem('horseGame_leaders');
-            alert("已清除本機記錄");
-            window.renderLeaderboard([]);
-        };
-
-        // 預設使用本地函數，雲端連線成功後會替換
-        window.saveRecord = window.saveRecordFunc;
-        window.showLeaderboard = function() {
-            const records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
-            window.renderLeaderboard(records);
-            document.getElementById('leaderboard-layer').classList.remove('hidden');
-        };
         window.closeLeaderboard = function() { document.getElementById('leaderboard-layer').classList.add('hidden'); };
-        window.clearLeaderboard = function() { if(confirm("確定要清除本機記錄嗎？")) { localStorage.removeItem('horseGame_leaders'); alert("已清除"); window.renderLeaderboard([]); } };
 
-        // 學生資料
+        // --- 4. 視窗與選單 ---
+        function resize() {
+            canvasWidth = canvas.width = window.innerWidth;
+            canvasHeight = canvas.height = window.innerHeight;
+            groundHeight = canvasHeight * 0.75;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
         const studentDB = {
             "1A": ["1 陳熹雋","2 陳意衡","3 陳彥君","4 陳楚皓","5 陳彥羲","6 侯林菲","7 許皓琳","8 黃煜軒","9 關旨荇","10 劉卓瀅","11 劉仲宇","12 羅卓熙","13 李芯悦","14 呂俊霖","15 呂仲軒","16 吳諾兒","17 彭梓悦","18 施鈞源","19 孫子豪","20 曾以仁","21 曹正","22 王天宇","23 王柏諾","24 胡悦翹"],
             "1B": ["1 陳曉瑩","2 陳梓韜","3 陳永昇","4 陳悅心","5 張峻烽","6 蔡宏鑫","7 朱灝喆","8 何允恒","9 韓欣穎","10 叶宇恒","11 江泳琳","12 關明菲","13 鄺雪晴","14 劉芊汝","15 羅復希","16 李俊霆","17 李鎧","18 梁凱淇","19 巫恒逸","20 柯芷晴","21 蘇智泓","22 曾鋭彬","23 尹梓言","24 胡梓榣","25 丘文博","26 朱鑠穎"],
@@ -515,62 +730,109 @@
             if (selectedClass) { studentSelect.disabled = false; studentDB[selectedClass].forEach(stu => { const option = document.createElement('option'); const parts = stu.split(' '); const name = parts.length > 1 ? parts[1] : parts[0]; option.value = name; option.innerText = stu; studentSelect.appendChild(option); }); } else { studentSelect.disabled = true; }
         });
 
-        function resize() { canvasWidth = canvas.width = window.innerWidth; canvasHeight = canvas.height = window.innerHeight; groundHeight = canvasHeight * 0.75; }
-        window.addEventListener('resize', resize);
-        resize();
-
-        // --- 3. 類別定義 (必須在 initGame 前) ---
+        // --- 5. 類別定義 (FinishLine, Confetti, Particle, Weather, Objects) ---
         class FinishLine {
             constructor() { this.x = canvasWidth; this.y = 0; this.width = 100; this.crossed = false; }
             update() { this.x -= speed * speedMultiplier; }
-            draw() { ctx.save(); ctx.beginPath(); ctx.moveTo(this.x, 0); ctx.lineTo(this.x, groundHeight - 150); ctx.lineWidth = 3; ctx.strokeStyle = '#555'; ctx.stroke(); ctx.fillStyle = '#d62828'; ctx.fillRect(this.x - 20, 50, 40, 200); ctx.beginPath(); ctx.moveTo(this.x - 20, 250); ctx.lineTo(this.x, 220); ctx.lineTo(this.x + 20, 250); ctx.lineTo(this.x + 20, 50); ctx.lineTo(this.x - 20, 50); ctx.fill(); ctx.strokeStyle = '#f1c40f'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = "bold 24px 'Ma Shan Zheng'"; ctx.textAlign = "center"; ctx.fillText("終", this.x, 100); ctx.fillText("點", this.x, 140); ctx.beginPath(); ctx.moveTo(this.x, 220); ctx.lineTo(this.x, 280); ctx.lineWidth = 2; ctx.strokeStyle = '#d62828'; ctx.stroke(); ctx.restore(); }
+            draw() {
+                ctx.save(); ctx.beginPath(); ctx.moveTo(this.x, 0); ctx.lineTo(this.x, groundHeight - 150);
+                ctx.lineWidth = 3; ctx.strokeStyle = '#555'; ctx.stroke();
+                ctx.fillStyle = '#d62828'; ctx.fillRect(this.x - 20, 50, 40, 200);
+                ctx.beginPath(); ctx.moveTo(this.x - 20, 250); ctx.lineTo(this.x, 220);
+                ctx.lineTo(this.x + 20, 250); ctx.lineTo(this.x + 20, 50); ctx.lineTo(this.x - 20, 50); ctx.fill();
+                ctx.strokeStyle = '#f1c40f'; ctx.lineWidth = 2; ctx.stroke();
+                ctx.fillStyle = '#fff'; ctx.font = "bold 24px 'Ma Shan Zheng'"; ctx.textAlign = "center";
+                ctx.fillText("終", this.x, 100); ctx.fillText("點", this.x, 140);
+                ctx.beginPath(); ctx.moveTo(this.x, 220); ctx.lineTo(this.x, 280);
+                ctx.lineWidth = 2; ctx.strokeStyle = '#d62828'; ctx.stroke(); ctx.restore();
+            }
         }
+
         class Confetti {
-            constructor(x, y) { this.x = x; this.y = y; this.size = Math.random() * 10 + 5; this.speedX = Math.random() * 6 - 3; this.speedY = Math.random() * -10 - 5; this.color = `hsl(${Math.random() * 360}, 100%, 50%)`; this.rotation = Math.random() * 360; this.rotationSpeed = Math.random() * 10 - 5; this.gravity = 0.4; }
+            constructor(x, y) {
+                this.x = x; this.y = y; this.size = Math.random() * 10 + 5;
+                this.speedX = Math.random() * 6 - 3; this.speedY = Math.random() * -10 - 5;
+                this.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
+                this.rotation = Math.random() * 360; this.rotationSpeed = Math.random() * 10 - 5; this.gravity = 0.4;
+            }
             update() { this.x += this.speedX; this.speedY += this.gravity; this.y += this.speedY; this.rotation += this.rotationSpeed; }
-            draw() { ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.rotation * Math.PI / 180); ctx.fillStyle = this.color; ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size); ctx.restore(); }
+            draw() {
+                ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.rotation * Math.PI / 180);
+                ctx.fillStyle = this.color; ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size); ctx.restore();
+            }
         }
+
         class Particle {
-            constructor(x, y) { this.x = x; this.y = y; this.size = Math.random() * 5 + 2; this.speedX = Math.random() * 2 - 1; this.speedY = Math.random() * -1 - 0.5; this.color = `rgba(30, 30, 30, ${Math.random() * 0.4 + 0.1})`; this.markedForDeletion = false; }
+            constructor(x, y) {
+                this.x = x; this.y = y; this.size = Math.random() * 5 + 2;
+                this.speedX = Math.random() * 2 - 1; this.speedY = Math.random() * -1 - 0.5;
+                this.color = `rgba(30, 30, 30, ${Math.random() * 0.4 + 0.1})`; this.markedForDeletion = false;
+            }
             update() { this.x -= speed * speedMultiplier * 0.8; this.x += this.speedX; this.y += this.speedY; this.size *= 0.95; if (this.size < 0.5) this.markedForDeletion = true; }
             draw() { ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); }
         }
+
         class WeatherParticle {
             constructor(type) {
                 this.type = type; this.x = Math.random() * (canvasWidth + 200); this.y = Math.random() * canvasHeight;
-                if (type === 'rain') { this.vy = Math.random() * 15 + 15; this.vx = -4; this.length = Math.random() * 20 + 20; } else if (type === 'snow') { this.vy = Math.random() * 3 + 2; this.vx = Math.random() * 2 - 1; this.size = Math.random() * 4 + 2; this.swing = Math.random() * Math.PI * 2; } else if (type === 'autumn') { this.vy = Math.random() * 2 + 1; this.vx = Math.random() * -3 - 2; this.size = Math.random() * 6 + 4; this.rotation = Math.random() * 360; this.rotationSpeed = Math.random() * 4 - 2; const colors = ['rgba(160, 82, 45, 0.8)', 'rgba(205, 92, 92, 0.8)', 'rgba(218, 165, 32, 0.8)']; this.color = colors[Math.floor(Math.random() * colors.length)]; } else if (type === 'night') { this.vx = Math.random() * 2 - 1; this.vy = Math.random() * 2 - 1; this.size = Math.random() * 3 + 1; this.alpha = Math.random(); this.alphaSpeed = 0.02; }
+                if (type === 'rain') { this.vy = Math.random() * 15 + 15; this.vx = -4; this.length = Math.random() * 20 + 20; }
+                else if (type === 'snow') { this.vy = Math.random() * 3 + 2; this.vx = Math.random() * 2 - 1; this.size = Math.random() * 4 + 2; this.swing = Math.random() * Math.PI * 2; }
+                else if (type === 'autumn') { this.vy = Math.random() * 2 + 1; this.vx = Math.random() * -3 - 2; this.size = Math.random() * 6 + 4; this.rotation = Math.random() * 360; this.rotationSpeed = Math.random() * 4 - 2; const colors = ['rgba(160, 82, 45, 0.8)', 'rgba(205, 92, 92, 0.8)', 'rgba(218, 165, 32, 0.8)']; this.color = colors[Math.floor(Math.random() * colors.length)]; }
+                else if (type === 'night') { this.vx = Math.random() * 2 - 1; this.vy = Math.random() * 2 - 1; this.size = Math.random() * 3 + 1; this.alpha = Math.random(); this.alphaSpeed = 0.02; }
             }
             update() {
-                if (this.type === 'night') { this.x += this.vx - (speed * 0.2); this.y += this.vy; this.alpha += this.alphaSpeed; if (this.alpha > 1 || this.alpha < 0.2) this.alphaSpeed *= -1; if (this.x < -50) this.x = canvasWidth + 50; if (this.y < 0) this.y = canvasHeight; if (this.y > canvasHeight) this.y = 0; }
-                else { this.y += this.vy; if (this.type === 'snow') { this.swing += 0.05; this.x += Math.sin(this.swing) * 1 + this.vx; this.x -= speed * 0.2; } else if (this.type === 'autumn') { this.x += this.vx; this.rotation += this.rotationSpeed; this.x -= speed * 0.2; } else { this.x += this.vx; this.x -= speed * 0.5; } if (this.y > canvasHeight || this.x < -100) { this.y = -20; this.x = Math.random() * (canvasWidth + 200); } }
+                if (this.type === 'night') {
+                    this.x += this.vx - (speed * 0.2); this.y += this.vy; this.alpha += this.alphaSpeed;
+                    if (this.alpha > 1 || this.alpha < 0.2) this.alphaSpeed *= -1;
+                    if (this.x < -50) this.x = canvasWidth + 50; if (this.y < 0) this.y = canvasHeight; if (this.y > canvasHeight) this.y = 0;
+                } else {
+                    this.y += this.vy;
+                    if (this.type === 'snow') { this.swing += 0.05; this.x += Math.sin(this.swing) * 1 + this.vx; this.x -= speed * 0.2; }
+                    else if (this.type === 'autumn') { this.x += this.vx; this.rotation += this.rotationSpeed; this.x -= speed * 0.2; }
+                    else { this.x += this.vx; this.x -= speed * 0.5; }
+                    if (this.y > canvasHeight || this.x < -100) { this.y = -20; this.x = Math.random() * (canvasWidth + 200); }
+                }
             }
             draw() {
-                if (this.type === 'rain') { ctx.strokeStyle = 'rgba(120, 130, 140, 0.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x + this.vx * 2, this.y + this.length); ctx.stroke(); } else if (this.type === 'snow') { ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); } else if (this.type === 'autumn') { ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.rotation * Math.PI / 180); ctx.fillStyle = this.color; ctx.beginPath(); ctx.ellipse(0, 0, this.size, this.size/2, 0, 0, Math.PI*2); ctx.fill(); ctx.restore(); } else if (this.type === 'night') { ctx.fillStyle = `rgba(200, 255, 100, ${this.alpha})`; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = `rgba(200, 255, 100, ${this.alpha * 0.3})`; ctx.beginPath(); ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2); ctx.fill(); }
+                if (this.type === 'rain') { ctx.strokeStyle = 'rgba(120, 130, 140, 0.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x + this.vx * 2, this.y + this.length); ctx.stroke(); }
+                else if (this.type === 'snow') { ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); }
+                else if (this.type === 'autumn') { ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.rotation * Math.PI / 180); ctx.fillStyle = this.color; ctx.beginPath(); ctx.ellipse(0, 0, this.size, this.size/2, 0, 0, Math.PI*2); ctx.fill(); ctx.restore(); }
+                else if (this.type === 'night') { ctx.fillStyle = `rgba(200, 255, 100, ${this.alpha})`; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = `rgba(200, 255, 100, ${this.alpha * 0.3})`; ctx.beginPath(); ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2); ctx.fill(); }
             }
         }
+
         class WeatherSystem {
-            constructor(type) { this.type = type; this.particles = []; if (this.type !== 'sunny') { let count = 50; if (this.type === 'rain') count = 80; if (this.type === 'night') count = 30; if (this.type === 'autumn') count = 40; for(let i=0; i<count; i++) { this.particles.push(new WeatherParticle(this.type)); } } }
+            constructor(type) {
+                this.type = type; this.particles = [];
+                if (this.type !== 'sunny') {
+                    let count = 50; if (this.type === 'rain') count = 80; if (this.type === 'night') count = 30; if (this.type === 'autumn') count = 40;
+                    for(let i=0; i<count; i++) { this.particles.push(new WeatherParticle(this.type)); }
+                }
+            }
             update() { if (this.type === 'sunny') return; this.particles.forEach(p => p.update()); }
             draw() { if (this.type === 'sunny') return; this.particles.forEach(p => p.draw()); }
         }
+
         class Cloud {
             constructor() { this.x = Math.random() * canvasWidth; this.y = Math.random() * (canvasHeight * 0.4); this.width = Math.random() * 100 + 80; this.speedFactor = Math.random() * 0.2 + 0.1; this.opacity = Math.random() * 0.4 + 0.2; }
             update() { this.x -= speed * speedMultiplier * this.speedFactor; if (this.x + this.width < 0) { this.x = canvasWidth + 50; this.y = Math.random() * (canvasHeight * 0.4); } }
             draw() { ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`; ctx.beginPath(); ctx.arc(this.x, this.y, 30, 0, Math.PI * 2); ctx.arc(this.x + 40, this.y - 10, 40, 0, Math.PI * 2); ctx.arc(this.x + 80, this.y, 30, 0, Math.PI * 2); ctx.fill(); }
         }
+
         class Bamboo {
             constructor() { this.reset(); }
             reset() { this.x = canvasWidth + Math.random() * 300; this.y = groundHeight + 20; this.height = Math.random() * 200 + 150; this.width = Math.random() * 6 + 4; this.depth = Math.random(); this.speedFactor = 0.5 - (this.depth * 0.2); this.opacity = 0.8 - (this.depth * 0.5); this.leaves = []; let segHeight = 30 + Math.random() * 20; for(let h=50; h<this.height; h+=segHeight) { if(Math.random() > 0.3) { let leafCount = Math.floor(Math.random() * 3) + 2; for(let i=0; i<leafCount; i++) { this.leaves.push({ h: h, angle: (Math.random() * 0.8 - 0.4), length: Math.random() * 25 + 15 }); } } } }
             update() { this.x -= speed * speedMultiplier * this.speedFactor; if (this.x < -50) { this.reset(); } }
             draw() { ctx.save(); ctx.translate(this.x, this.y); ctx.fillStyle = `rgba(45, 60, 45, ${this.opacity})`; ctx.strokeStyle = `rgba(45, 60, 45, ${this.opacity})`; let segHeight = 35; for(let h=0; h<this.height; h+=segHeight) { let localW = this.width - (h/this.height)*2; ctx.fillRect(-localW/2, -h - segHeight, localW, segHeight - 2); ctx.beginPath(); ctx.moveTo(-localW/2 - 2, -h); ctx.lineTo(localW/2 + 2, -h); ctx.lineWidth = 2; ctx.stroke(); } this.leaves.forEach(leaf => { ctx.save(); ctx.translate(0, -leaf.h); ctx.rotate(leaf.angle); ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(leaf.length/2, 5, leaf.length, 0); ctx.quadraticCurveTo(leaf.length/2, -5, 0, 0); ctx.fill(); ctx.restore(); }); ctx.restore(); }
         }
-        // 確保 Bird 定義在 Background 之前
+        
         class Bird {
-            constructor() { this.reset(); }
+             constructor() { this.reset(); }
             reset() { this.x = canvasWidth + Math.random() * 1000; this.y = Math.random() * (canvasHeight * 0.3) + 20; this.speedX = Math.random() * 2 + 2; this.size = Math.random() * 10 + 10; this.wingSpeed = 0.2; this.angle = 0; }
             update() { this.x -= (speed * 0.5 + this.speedX); this.angle += this.wingSpeed; if(this.x < -50) this.reset(); }
             draw() { ctx.save(); ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.translate(this.x, this.y); ctx.beginPath(); let wingY = Math.sin(this.angle) * 5; ctx.moveTo(-this.size/2, -wingY); ctx.quadraticCurveTo(0, 5, this.size/2, -wingY); ctx.stroke(); ctx.restore(); }
         }
+
         class Background {
             constructor() {
                 this.mountains = []; let currentX = 0; while (currentX < canvasWidth + 500) { this.addMountain(currentX); let lastM = this.mountains[this.mountains.length - 1]; currentX = lastM.x + lastM.width - 100; }
@@ -579,7 +841,12 @@
                 this.birds = []; for(let i=0; i<3; i++) this.birds.push(new Bird());
             }
             addMountain(xOffset) { this.mountains.push({ x: xOffset, y: groundHeight, width: Math.random() * 300 + 200, height: Math.random() * 150 + 80, opacity: Math.random() * 0.2 + 0.05 }); }
-            update() { this.clouds.forEach(c => c.update()); this.mountains.forEach(m => { m.x -= speed * speedMultiplier * 0.2; }); if (this.mountains.length > 0 && this.mountains[0].x + this.mountains[0].width < -100) { this.mountains.shift(); } let lastM = this.mountains[this.mountains.length - 1]; if (lastM.x + lastM.width < canvasWidth + 500) { this.addMountain(lastM.x + lastM.width - 100); } this.bamboos.sort((a, b) => a.depth - b.depth); this.bamboos.forEach(b => b.update()); this.birds.forEach(b => b.update()); }
+            update() {
+                this.clouds.forEach(c => c.update()); this.mountains.forEach(m => { m.x -= speed * speedMultiplier * 0.2; });
+                if (this.mountains.length > 0 && this.mountains[0].x + this.mountains[0].width < -100) { this.mountains.shift(); }
+                let lastM = this.mountains[this.mountains.length - 1]; if (lastM.x + lastM.width < canvasWidth + 500) { this.addMountain(lastM.x + lastM.width - 100); }
+                this.bamboos.sort((a, b) => a.depth - b.depth); this.bamboos.forEach(b => b.update()); this.birds.forEach(b => b.update());
+            }
             draw() {
                 if (weatherSystem.type === 'rain') ctx.fillStyle = '#cfd3d6'; else if (weatherSystem.type === 'snow') ctx.fillStyle = '#dbe4eb'; else if (weatherSystem.type === 'night') ctx.fillStyle = '#7f8fa6'; else if (weatherSystem.type === 'autumn') ctx.fillStyle = '#fdf5e6'; else ctx.fillStyle = '#fdfbf7';
                 ctx.fillRect(0, 0, canvasWidth, groundHeight);
@@ -590,12 +857,16 @@
                 ctx.beginPath(); ctx.moveTo(0, groundHeight); ctx.lineTo(canvasWidth, groundHeight); ctx.strokeStyle = '#555'; ctx.lineWidth = 2; ctx.stroke();
             }
         }
+
         class Horse {
             constructor() {
-                this.scale = 0.6; this.width = 120 * this.scale; this.height = 100 * this.scale; this.x = canvasWidth * 0.15; this.y = groundHeight - this.height; this.vy = 0; this.weight = 2.5; this.jumpStrength = -28; this.isJumping = false; this.frame = 0;
-                this.useImage = false; this.runImg1 = new Image(); this.runImg2 = new Image(); this.jumpImg = new Image(); this.runImg1.src = 'horse_run1.png'; this.runImg2.src = 'horse_run2.png'; this.jumpImg.src = 'horse_jump.png';
+                this.scale = 0.6; this.width = 120 * this.scale; this.height = 100 * this.scale; this.x = canvasWidth * 0.15; this.y = groundHeight - this.height;
+                this.vy = 0; this.weight = 2.5; this.jumpStrength = -28; this.isJumping = false; this.frame = 0;
+                this.useImage = false; this.runImg1 = new Image(); this.runImg2 = new Image(); this.jumpImg = new Image();
+                this.runImg1.src = 'horse_run1.png'; this.runImg2.src = 'horse_run2.png'; this.jumpImg.src = 'horse_jump.png';
                 const checkLoad = () => this.checkImages(); const handleError = () => { this.useImage = false; let statusDiv = document.getElementById('img-status'); if(statusDiv) statusDiv.innerText = "圖片缺失或錯誤，使用手繪模式"; };
-                this.runImg1.onload = checkLoad; this.runImg2.onload = checkLoad; this.jumpImg.onload = checkLoad; this.runImg1.onerror = handleError; this.runImg2.onerror = handleError; this.jumpImg.onerror = handleError;
+                this.runImg1.onload = checkLoad; this.runImg2.onload = checkLoad; this.jumpImg.onload = checkLoad;
+                this.runImg1.onerror = handleError; this.runImg2.onerror = handleError; this.jumpImg.onerror = handleError;
             }
             checkImages() { if (this.runImg1.complete && this.runImg1.naturalWidth > 0 && this.runImg2.complete && this.runImg2.naturalWidth > 0 && this.jumpImg.complete && this.jumpImg.naturalWidth > 0) { this.useImage = true; let statusDiv = document.getElementById('img-status'); if(statusDiv) statusDiv.innerText = "圖片加載成功！(動畫模式)"; } }
             update() { this.vy += this.weight; this.y += this.vy; if (this.y > groundHeight - this.height) { this.y = groundHeight - this.height; this.vy = 0; this.isJumping = false; } this.frame++; }
@@ -612,11 +883,23 @@
                 if (!this.isJumping) { this.vy = this.jumpStrength; this.isJumping = true; try { playTone(400, 'triangle'); } catch(e) {} for(let i=0; i<8; i++) { particles.push(new Particle(this.x + 50, this.y + this.height)); } }
             }
         }
+
         class Obstacle {
             constructor() {
                 this.width = Math.random() * 30 + 30; let currentDist = Math.floor(score/5);
-                if (currentDist >= 450) { this.height = Math.random() * 30 + 50; this.width = Math.random() * 40 + 50; } else { this.height = Math.random() * 25 + 25; }
-                this.x = canvasWidth; this.y = groundHeight - this.height; this.markedForDeletion = false; this.type = Math.random() > 0.6 ? 'rock' : 'bush';
+                if (currentDist >= 450) {
+                    // 極限階段：高度提升 (50-80)
+                    this.height = Math.random() * 30 + 50; 
+                    
+                    // 修改：最後 50 米，障礙物隨機加闊 (50-90)
+                    this.width = Math.random() * 40 + 50; 
+                } else {
+                    this.height = Math.random() * 25 + 25; 
+                }
+                this.x = canvasWidth;
+                this.y = groundHeight - this.height;
+                this.markedForDeletion = false;
+                this.type = Math.random() > 0.6 ? 'rock' : 'bush';
             }
             update() { this.x -= speed * speedMultiplier; if (this.x < -this.width) this.markedForDeletion = true; }
             draw() {
@@ -625,182 +908,346 @@
             }
         }
 
-        function playTone(freq, type) { try { if (audioCtx.state === 'suspended') audioCtx.resume(); const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime); gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.1); } catch (e) { console.warn("Audio error", e); } }
-        function playWinSound() { setTimeout(() => playTone(400, 'sine'), 0); setTimeout(() => playTone(500, 'sine'), 200); setTimeout(() => playTone(800, 'sine'), 400); }
-        function playFailSound() { setTimeout(() => playTone(200, 'sawtooth'), 0); setTimeout(() => playTone(150, 'sawtooth'), 300); }
+        // --- 6. 遊戲邏輯與主循環 ---
 
         function initGame(forceType) {
-            horse = new Horse(); obstacles = []; particles = []; confettiParticles = []; score = 0; speedMultiplier = 1; gameFrame = 0; spawnTimer = 0; rushStage = 0; finishLine = null;
-            let statusDiv = document.getElementById('img-status'); if(statusDiv) { statusDiv.innerText = "圖片狀態: 檢查中..."; statusDiv.style.color = "#888"; statusDiv.style.fontWeight = "normal"; statusDiv.style.textShadow = "none"; }
-            let type = forceType; if (!type || type === 'random') { const weathers = ['sunny', 'rain', 'snow', 'night', 'autumn']; type = weathers[Math.floor(Math.random() * weathers.length)]; }
-            weatherSystem = new WeatherSystem(type); background = new Background(); if(horse.checkImages) horse.checkImages();
-        }
-        window.initGame = initGame;
+            horse = new Horse();
+            obstacles = [];
+            particles = [];
+            confettiParticles = []; 
+            score = 0;
+            speedMultiplier = 1;
+            gameFrame = 0;
+            spawnTimer = 0;
+            rushStage = 0; 
+            finishLine = null; 
+            
+            let statusDiv = document.getElementById('img-status');
+            if(statusDiv) {
+                statusDiv.innerText = "圖片狀態: 檢查中...";
+                statusDiv.style.color = "#888";
+                statusDiv.style.fontWeight = "normal";
+                statusDiv.style.textShadow = "none";
+            }
 
-        function startGame() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            const classSelect = document.getElementById('class-select'); const studentSelect = document.getElementById('student-select'); const bgSelect = document.getElementById('bg-select');
-            const selectedClass = classSelect.value; const selectedName = studentSelect.value; const selectedBg = bgSelect.value;
-            if (selectedClass && selectedName) { currentPlayerName = selectedClass + " " + selectedName; } else { currentPlayerName = ""; }
-            document.getElementById('player-name-display').innerText = currentPlayerName;
-            classSelect.blur(); studentSelect.blur(); bgSelect.blur(); if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-            document.getElementById('start-screen').classList.add('hidden'); document.getElementById('end-screen').classList.add('hidden');
-            initGame(selectedBg); isPlaying = true; lastTime = 0; animate(0);
+            // 背景選擇邏輯
+            let type = forceType;
+            if (!type || type === 'random') {
+                const weathers = ['sunny', 'rain', 'snow', 'night', 'autumn']; 
+                type = weathers[Math.floor(Math.random() * weathers.length)];
+            }
+            console.log("Current Weather:", type);
+            
+            weatherSystem = new WeatherSystem(type);
+            background = new Background();
+            
+            if(horse.checkImages) horse.checkImages();
         }
-        window.startGame = startGame;
 
-        function resetGame() { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); document.getElementById('end-screen').classList.add('hidden'); document.getElementById('player-name-display').innerText = ""; document.getElementById('start-screen').classList.remove('hidden'); }
-        window.resetGame = resetGame;
+        function playTone(freq, type) {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.1);
+            } catch (e) {
+                console.warn("Audio play failed:", e);
+            }
+        }
+
+        function playWinSound() {
+            setTimeout(() => playTone(400, 'sine'), 0);
+            setTimeout(() => playTone(500, 'sine'), 200);
+            setTimeout(() => playTone(800, 'sine'), 400);
+        }
+
+        function playFailSound() {
+            setTimeout(() => playTone(200, 'sawtooth'), 0);
+            setTimeout(() => playTone(150, 'sawtooth'), 300);
+        }
 
         function animate(timeStamp) {
             try {
-                const deltaTime = timeStamp - lastTime; lastTime = timeStamp; if (!isPlaying) return;
-                let currentDist = Math.floor(score/5); let shakeX = 0; let shakeY = 0; if (currentDist >= 450) { shakeX = Math.random() * 3 - 1.5; shakeY = Math.random() * 3 - 1.5; }
-                ctx.clearRect(0, 0, canvasWidth, canvasHeight); ctx.save(); ctx.translate(shakeX, shakeY);
-                background.update(); background.draw();
-                if (currentDist >= targetScore && !finishLine) { finishLine = new FinishLine(); }
+                const deltaTime = timeStamp - lastTime;
+                lastTime = timeStamp;
+
+                if (!isPlaying) return;
+
+                // --- 畫面震動效果 (最後50米) ---
+                let currentDist = Math.floor(score/5);
+                let shakeX = 0;
+                let shakeY = 0;
+                
+                if (currentDist >= 450) {
+                    shakeX = Math.random() * 3 - 1.5;
+                    shakeY = Math.random() * 3 - 1.5;
+                }
+
+                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+                
+                // 應用震動
+                ctx.save();
+                ctx.translate(shakeX, shakeY);
+
+                background.update();
+                background.draw();
+
+                if (currentDist >= targetScore && !finishLine) {
+                    finishLine = new FinishLine();
+                }
+
                 if (finishLine) {
-                    finishLine.update(); finishLine.draw();
-                    if (!finishLine.crossed && horse.x > finishLine.x) { finishLine.crossed = true; for(let i=0; i<50; i++) { confettiParticles.push(new Confetti(horse.x + 50, horse.y)); } setTimeout(() => gameOver(true), 500); }
+                    finishLine.update();
+                    finishLine.draw();
+
+                    if (!finishLine.crossed && horse.x > finishLine.x) {
+                        finishLine.crossed = true;
+                        for(let i=0; i<50; i++) {
+                            confettiParticles.push(new Confetti(horse.x + 50, horse.y));
+                        }
+                        setTimeout(() => gameOver(true), 500);
+                    }
                 } else {
-                    spawnTimer--; if (spawnTimer <= 0) {
-                        obstacles.push(new Obstacle()); let minGap, variance;
-                        if (currentDist >= 450) { if (rushStage < 2) { rushStage = 2; let statusDiv = document.getElementById('img-status'); if(statusDiv) { statusDiv.innerText = "⚡️ 最後50米！極限反應！"; statusDiv.style.color = "#9b59b6"; statusDiv.style.fontWeight = "bold"; statusDiv.style.fontSize = "2rem"; statusDiv.style.textShadow = "0px 0px 10px #fff"; } } minGap = 22; variance = 30; } 
-                        else if (currentDist >= 400) { if (rushStage < 1) { rushStage = 1; let statusDiv = document.getElementById('img-status'); if(statusDiv) { statusDiv.innerText = "🔥 最後衝刺！小心障礙！"; statusDiv.style.color = "#d62828"; statusDiv.style.fontWeight = "bold"; statusDiv.style.fontSize = "2rem"; } } minGap = 28; variance = 10; } 
-                        else { let difficultyReduce = Math.min(score * 0.01, 15); minGap = Math.max(30, 40 - difficultyReduce); variance = Math.max(15, 30 - difficultyReduce); }
-                        spawnTimer = Math.random() * variance + minGap;
+                    spawnTimer--;
+                    if (spawnTimer <= 0) {
+                        obstacles.push(new Obstacle());
+                        
+                        let minGap, variance;
+
+                        if (currentDist >= 450) {
+                             if (rushStage < 2) {
+                                rushStage = 2;
+                                let statusDiv = document.getElementById('img-status');
+                                if(statusDiv) {
+                                    statusDiv.innerText = "⚡️ 最後50米！極限反應！";
+                                    statusDiv.style.color = "#9b59b6"; 
+                                    statusDiv.style.fontWeight = "bold";
+                                    statusDiv.style.fontSize = "2rem"; /* 加大提示文字 */
+                                    statusDiv.style.textShadow = "0px 0px 10px #fff"; 
+                                }
+                            }
+                            minGap = 22; 
+                            variance = 30; 
+                        } 
+                        else if (currentDist >= 400) {
+                            if (rushStage < 1) {
+                                rushStage = 1;
+                                let statusDiv = document.getElementById('img-status');
+                                if(statusDiv) {
+                                    statusDiv.innerText = "🔥 最後衝刺！小心障礙！";
+                                    statusDiv.style.color = "#d62828"; 
+                                    statusDiv.style.fontWeight = "bold";
+                                    statusDiv.style.fontSize = "2rem"; /* 加大提示文字 */
+                                }
+                            }
+                            minGap = 28; 
+                            variance = 10; 
+                        } 
+                        else {
+                            let difficultyReduce = Math.min(score * 0.01, 15); 
+                            minGap = Math.max(30, 40 - difficultyReduce);
+                            variance = Math.max(15, 30 - difficultyReduce);
+                        }
+
+                        spawnTimer = Math.random() * variance + minGap; 
                     }
                 }
+
                 for (let i = 0; i < obstacles.length; i++) {
-                    let obs = obstacles[i]; obs.update(); obs.draw();
-                    let hitX = horse.x + 30; let hitY = horse.y + 20; let hitW = Math.max(10, horse.width - 60); let hitH = Math.max(10, horse.height - 35);
-                    if (hitX < obs.x + obs.width && hitX + hitW > obs.x && hitY < obs.y + obs.height && hitY + hitH > obs.y) { gameOver(false); return; }
+                    let obs = obstacles[i];
+                    obs.update();
+                    obs.draw();
+                    
+                    let hitX = horse.x + 30;
+                    let hitY = horse.y + 20;
+                    let hitW = Math.max(10, horse.width - 60); 
+                    let hitH = Math.max(10, horse.height - 35); 
+
+                    if (
+                        hitX < obs.x + obs.width &&
+                        hitX + hitW > obs.x &&
+                        hitY < obs.y + obs.height &&
+                        hitY + hitH > obs.y
+                    ) {
+                        gameOver(false);
+                        return; 
+                    }
                 }
+                
                 obstacles = obstacles.filter(obs => !obs.markedForDeletion);
+
                 confettiParticles.forEach(p => { p.update(); p.draw(); });
-                if (!finishLine || !finishLine.crossed) { if (!horse.isJumping && gameFrame % 6 === 0) { particles.push(new Particle(horse.x + 40, horse.y + horse.height)); } }
-                particles.forEach(p => { p.update(); p.draw(); }); particles = particles.filter(p => !p.markedForDeletion);
-                horse.update(); horse.draw(); weatherSystem.update(); weatherSystem.draw(); ctx.restore();
-                if (isPlaying) { score++; }
-                currentDist = Math.floor(score/5); let displayDist = Math.min(currentDist, targetScore); document.getElementById('score-display').innerText = `距離: ${displayDist} 米`;
-                speedMultiplier = 1 + (score * 0.001); if (currentDist >= 450) { let turbulence = 1.3 + Math.sin(gameFrame * 0.15) * 0.15; speedMultiplier *= turbulence; }
-                gameFrame++; animationId = requestAnimationFrame(animate);
-            } catch (e) { console.error("Game loop crash:", e); isPlaying = false; }
+                
+                if (!finishLine || !finishLine.crossed) {
+                    if (!horse.isJumping && gameFrame % 6 === 0) {
+                        particles.push(new Particle(horse.x + 40, horse.y + horse.height));
+                    }
+                }
+                
+                particles.forEach(p => { p.update(); p.draw(); });
+                particles = particles.filter(p => !p.markedForDeletion);
+
+                horse.update();
+                horse.draw();
+
+                weatherSystem.update();
+                weatherSystem.draw();
+
+                // 恢復畫布狀態
+                ctx.restore();
+
+                if (isPlaying) {
+                    score++;
+                }
+                
+                currentDist = Math.floor(score/5);
+                let displayDist = Math.min(currentDist, targetScore);
+                document.getElementById('score-display').innerText = `距離: ${displayDist} 米`;
+
+                // 基礎速度與擾動
+                speedMultiplier = 1 + (score * 0.001); 
+                
+                if (currentDist >= 450) {
+                    let turbulence = 1.3 + Math.sin(gameFrame * 0.15) * 0.15;
+                    speedMultiplier *= turbulence;
+                }
+
+                gameFrame++;
+                animationId = requestAnimationFrame(animate);
+            } catch (e) {
+                console.error("Game loop crash:", e);
+                isPlaying = false; 
+            }
         }
 
+        function startGame() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const classSelect = document.getElementById('class-select');
+            const studentSelect = document.getElementById('student-select');
+            const bgSelect = document.getElementById('bg-select'); // 獲取背景選擇
+            
+            const selectedClass = classSelect.value;
+            const selectedName = studentSelect.value;
+            const selectedBg = bgSelect.value; // 獲取選擇的值
+
+            if (selectedClass && selectedName) {
+                currentPlayerName = selectedClass + " " + selectedName;
+            } else {
+                currentPlayerName = ""; 
+            }
+            
+            document.getElementById('player-name-display').innerText = currentPlayerName;
+
+            classSelect.blur();
+            studentSelect.blur();
+            bgSelect.blur(); // 移除焦點
+            if (document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur();
+            }
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('end-screen').classList.add('hidden');
+            
+            // 將選擇的背景傳入初始化函數
+            initGame(selectedBg);
+            
+            isPlaying = true;
+            lastTime = 0;
+            animate(0);
+        }
+        window.startGame = startGame;
+
+        function resetGame() {
+            if (document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur();
+            }
+            document.getElementById('end-screen').classList.add('hidden');
+            document.getElementById('player-name-display').innerText = ""; 
+            
+            document.getElementById('start-screen').classList.remove('hidden');
+        }
+        window.resetGame = resetGame;
+
         function gameOver(isWin) {
-            isPlaying = false; cancelAnimationFrame(animationId);
-            const endScreen = document.getElementById('end-screen'); const title = document.getElementById('end-title'); const scoreText = document.getElementById('end-score'); const idiomText = document.getElementById('idiom-text'); const idiomDesc = document.getElementById('idiom-desc');
+            isPlaying = false;
+            cancelAnimationFrame(animationId);
+            
+            const endScreen = document.getElementById('end-screen');
+            const title = document.getElementById('end-title');
+            const scoreText = document.getElementById('end-score');
+            const idiomText = document.getElementById('idiom-text');
+            const idiomDesc = document.getElementById('idiom-desc');
+
             endScreen.classList.remove('hidden');
-            let finalScore = Math.floor(score/5);
+
             if (isWin) {
-                title.innerText = "馬到功成！"; title.style.color = "#d62828";
-                if (currentPlayerName) { scoreText.innerText = `恭喜 ${currentPlayerName} 到達了 ${targetScore} 米終點！`; if(window.saveRecord) window.saveRecord(currentPlayerName, targetScore); } else { scoreText.innerText = `恭喜你到達了 ${targetScore} 米終點！`; }
+                title.innerText = "馬到功成！";
+                title.style.color = "#d62828"; 
+                if (currentPlayerName) {
+                    scoreText.innerText = `恭喜 ${currentPlayerName} 到達了 ${targetScore} 米終點！`;
+                    // --- 儲存到排行榜 ---
+                    saveRecord(currentPlayerName, targetScore);
+                } else {
+                    scoreText.innerText = `恭喜你到達了 ${targetScore} 米終點！`;
+                }
                 playWinSound();
             } else {
-                title.innerText = "再接再厲"; title.style.color = "#555";
-                let displayScore = Math.min(finalScore, targetScore);
-                if(currentPlayerName && finalScore > 0) { if(window.saveRecord) window.saveRecord(currentPlayerName, finalScore); }
-                if (currentPlayerName) { scoreText.innerText = `${currentPlayerName} 本次奔跑距離：${displayScore} 米`; } else { scoreText.innerText = `本次奔跑距離：${displayScore} 米`; }
+                title.innerText = "再接再厲";
+                title.style.color = "#555";
+                let finalScore = Math.min(Math.floor(score/5), targetScore);
+                if (currentPlayerName) {
+                    scoreText.innerText = `${currentPlayerName} 本次奔跑距離：${finalScore} 米`;
+                    // 未過關也上傳
+                    if (finalScore > 0) saveRecord(currentPlayerName, finalScore);
+                } else {
+                    scoreText.innerText = `本次奔跑距離：${finalScore} 米`;
+                }
                 playFailSound();
             }
-            try { const randomIdiom = idioms[Math.floor(Math.random() * idioms.length)]; idiomText.innerText = randomIdiom.text; idiomDesc.innerText = randomIdiom.desc; } catch(e) {}
+
+            try {
+                const randomIdiom = idioms[Math.floor(Math.random() * idioms.length)];
+                idiomText.innerText = randomIdiom.text;
+                idiomDesc.innerText = randomIdiom.desc;
+            } catch(e) {
+                console.error("Idiom loading error:", e);
+                idiomText.innerText = "龍馬精神"; 
+                idiomDesc.innerText = "形容精神健旺、充沛。";
+            }
         }
 
         function handleInput(e) {
-            if (e.code === 'Space' || e.key === ' ') e.preventDefault();
-            if (e.type === 'touchstart' && isPlaying) e.preventDefault();
+            if (e.code === 'Space' || e.key === ' ') {
+                e.preventDefault();
+            }
+
+            if (e.type === 'touchstart') {
+                if(isPlaying) e.preventDefault();
+            }
+
             if (e.code === 'Space' || e.key === ' ' || e.type === 'touchstart' || e.type === 'mousedown') {
-                if (isPlaying) { horse.jump(); } else { if (!document.getElementById('end-screen').classList.contains('hidden') && (e.code === 'Space' || e.key === ' ')) { resetGame(); } }
+                if (isPlaying) {
+                    horse.jump();
+                } else {
+                    if (!document.getElementById('end-screen').classList.contains('hidden') && (e.code === 'Space' || e.key === ' ')) {
+                        resetGame();
+                    }
+                }
             }
         }
-        window.addEventListener('keydown', handleInput); window.addEventListener('touchstart', handleInput, {passive: false}); window.addEventListener('mousedown', handleInput);
 
-        // 預設本地儲存
-        window.saveRecord = function(name, distance) {
-            let records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]');
-            records.push({ name: name, score: distance, timestamp: new Date().toISOString() });
-            records.sort((a, b) => b.score - a.score); if(records.length > 50) records = records.slice(0, 50);
-            localStorage.setItem('horseGame_leaders', JSON.stringify(records));
-        };
-        window.renderLeaderboard = function(records) {
-            const listContainer = document.getElementById('leaderboard-list'); records.sort((a, b) => b.score - a.score); records = records.slice(0, 50);
-            let html = ""; if (records.length === 0) html = "<div style='text-align:center; padding:20px; color:#888;'>暫無記錄</div>";
-            else { records.forEach((rec, index) => { let rankClass = ""; if (index === 0) rankClass = "rank-1"; if (index === 1) rankClass = "rank-2"; if (index === 2) rankClass = "rank-3"; html += `<div class="leaderboard-item ${rankClass}"><span class="rank-num">${index + 1}</span><span class="rank-name">${rec.name || "無名氏"}</span><span class="rank-score">${rec.score} 米</span></div>`; }); }
-            listContainer.innerHTML = html;
-        };
-        window.showLeaderboard = function() { const records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]'); window.renderLeaderboard(records); document.getElementById('leaderboard-layer').classList.remove('hidden'); };
-        window.closeLeaderboard = function() { document.getElementById('leaderboard-layer').classList.add('hidden'); };
-        window.clearLeaderboard = function() { if(confirm("確定要清除本機記錄嗎？")) { localStorage.removeItem('horseGame_leaders'); alert("已清除"); window.renderLeaderboard([]); } };
+        window.addEventListener('keydown', handleInput);
+        window.addEventListener('touchstart', handleInput, {passive: false});
+        window.addEventListener('mousedown', handleInput);
 
-    </script>
-
-    <!-- 雲端模組 (漸進增強) -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        const userFirebaseConfig = { apiKey: "AIzaSyCdXs8koAE6yHcFlpn_AUwd-CVIra_JHeI", authDomain: "horse-953b3.firebaseapp.com", projectId: "horse-953b3", storageBucket: "horse-953b3.firebasestorage.app", messagingSenderId: "544698080960", appId: "1:544698080960:web:6da549f79dadcc4ca8d725", measurementId: "G-THQY7C7JKF" };
-
-        try {
-            let config = userFirebaseConfig;
-            if (typeof __firebase_config !== 'undefined') config = JSON.parse(__firebase_config);
-            const app = initializeApp(config);
-            const auth = getAuth(app);
-            const db = getFirestore(app);
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            let currentUser = null;
-            let unsubscribeLeaderboard = null;
-
-            (async () => {
-                try {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
-                    else await signInAnonymously(auth);
-                } catch(e) { console.warn("Auth error", e); }
-            })();
-
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    currentUser = user;
-                    console.log("Cloud Mode Activated");
-                    
-                    // 覆寫為雲端版本
-                    window.saveRecord = async function(name, distance) {
-                        try { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard'), { name: name, score: distance, timestamp: new Date().toISOString() }); }
-                        catch (e) { console.error("Cloud save failed", e); }
-                    };
-                    
-                    window.showLeaderboard = function() {
-                        document.getElementById('leaderboard-layer').classList.remove('hidden');
-                        document.getElementById('leaderboard-list').innerHTML = "<div style='text-align:center; padding:20px; color:#888;'>載入中...</div>";
-                        if (unsubscribeLeaderboard) unsubscribeLeaderboard();
-                        unsubscribeLeaderboard = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard'), (snapshot) => {
-                            let records = []; snapshot.forEach(doc => records.push(doc.data())); window.renderLeaderboard(records);
-                        }, (error) => {
-                            console.error("Cloud load failed", error);
-                            // Fallback to local
-                            const records = JSON.parse(localStorage.getItem('horseGame_leaders') || '[]'); window.renderLeaderboard(records);
-                        });
-                    };
-
-                    window.closeLeaderboard = function() {
-                        document.getElementById('leaderboard-layer').classList.add('hidden');
-                        if (unsubscribeLeaderboard) { unsubscribeLeaderboard(); unsubscribeLeaderboard = null; }
-                    };
-
-                    window.clearLeaderboard = async function() {
-                        if(confirm("確定要清除所有雲端記錄嗎？")) {
-                            try {
-                                const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard'));
-                                const promises = snapshot.docs.map(docSnap => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', docSnap.id)));
-                                await Promise.all(promises); alert("雲端記錄已清除");
-                            } catch(e) { alert("清除失敗"); }
-                        }
-                    };
-                }
-            });
-        } catch (e) { console.warn("Cloud init failed, staying local."); }
     </script>
 </body>
 </html>
