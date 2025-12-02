@@ -220,11 +220,18 @@
             text-shadow: 2px 2px 0px rgba(255, 255, 255, 0.6);
         }
 
+        /* 學生姓名顯示 (遊戲中) */
         #player-name-display {
             position: absolute;
-            bottom: 120px; 
+            bottom: 0; /* 貼底 */
             left: 0;
             width: 100%;
+            height: 25%; /* 佔據地面高度 (地面高度為 25%) */
+            display: flex; /* 使用 Flexbox */
+            justify-content: center; /* 水平置中 */
+            align-items: center; /* 垂直置中 */
+            
+            /* 字體樣式 */
             text-align: center;
             font-family: 'Ma Shan Zheng', cursive;
             font-size: 3.5rem; 
@@ -335,7 +342,7 @@
         .rank-3 .rank-num { color: #cd7f32; font-size: 1.3rem; text-shadow: 1px 1px 0px #a0522d; }
 
         .rank-num { font-weight: bold; width: 40px; text-align: center; font-family: 'Ma Shan Zheng', cursive; }
-        .rank-name { flex-grow: 1; padding-left: 10px; text-align: center; }
+        .rank-name { flex-grow: 1; padding-left: 10px; text-align: center; /* 姓名置中 */ }
         .rank-score { font-weight: bold; color: #d62828; width: 80px; text-align: right;}
         .badge { margin-left: 5px; font-size: 1.2rem; }
 
@@ -347,7 +354,7 @@
             p { font-size: 1rem; }
             .btn { font-size: 1.5rem; padding: 10px 30px; }
             #score-display { font-size: 2.5rem; }
-            #player-name-display { font-size: 2rem; bottom: 100px; }
+            #player-name-display { font-size: 2rem; } /* 移除 bottom 覆蓋，使用 flex 佈局自動定位 */
         }
     </style>
 </head>
@@ -514,25 +521,23 @@
                     if (user) {
                         console.log("Cloud Mode Active");
                         useCloud = true;
-                        setupCloudFunctions(); // 連線成功後覆蓋為雲端函數
+                        setupCloudFunctions(); 
                     } else {
                         auth.signInAnonymously().catch(e => console.warn("Auth failed:", e));
                     }
                 });
             } else {
-                setupLocalFallback(); // 無 Firebase 庫，使用本地
+                setupLocalFallback(); 
             }
         } catch (e) {
             console.warn("Firebase init error, using local mode.", e);
             setupLocalFallback();
         }
         
-        // 預設先執行一次本地設定，防止連線前按按鈕報錯
         if(!useCloud) setupLocalFallback();
 
         // --- 4. 排行榜邏輯函數 (本地與雲端) ---
 
-        // 本地模式 (預設/離線)
         function setupLocalFallback() {
             window.saveRecord = function(name, distance) {
                 let finalDistance = Math.min(distance, 500);
@@ -549,10 +554,15 @@
             };
             
             window.clearLeaderboard = function() {
-                if(confirm("確定要清除本機記錄嗎？")) {
-                    localStorage.removeItem('horseGame_leaders');
-                    alert("已清除");
-                    renderLeaderboard([]);
+                let password = prompt("請輸入管理員密碼以清除記錄：");
+                if (password === "grandmont") {
+                    if(confirm("確定要清除本機記錄嗎？")) {
+                        localStorage.removeItem('horseGame_leaders');
+                        alert("已清除");
+                        renderLeaderboard([]);
+                    }
+                } else if (password !== null) {
+                    alert("密碼錯誤！");
                 }
             };
             
@@ -563,7 +573,6 @@
             };
         }
 
-        // 雲端模式 (連線成功後啟用)
         function setupCloudFunctions() {
             window.saveRecord = function(name, distance) {
                 let finalDistance = Math.min(distance, 500);
@@ -602,16 +611,21 @@
             };
 
             window.clearLeaderboard = function() {
-                if(confirm("確定要清除所有雲端記錄嗎？")) {
-                     db.collection('artifacts').doc(APP_ID).collection('leaderboard').get().then(snapshot => {
-                         snapshot.forEach(doc => doc.ref.delete());
-                         alert("雲端記錄已清除");
-                     }).catch(e => alert("清除失敗"));
+                let password = prompt("請輸入管理員密碼以清除記錄：");
+                if (password === "grandmont") {
+                    if(confirm("確定要清除所有雲端記錄嗎？")) {
+                         db.collection('artifacts').doc(APP_ID).collection('leaderboard').get().then(snapshot => {
+                             snapshot.forEach(doc => doc.ref.delete());
+                             alert("雲端記錄已清除");
+                         }).catch(e => alert("清除失敗"));
+                    }
+                } else if (password !== null) {
+                    alert("密碼錯誤！");
                 }
             };
         }
 
-        // 共用：排名計算 (Dense Ranking)
+        // 核心排名算法
         function calculateRank(records, myName, myScore) {
             records.sort((a, b) => {
                 if (b.score !== a.score) return b.score - a.score;
@@ -624,10 +638,10 @@
 
             for (let i = 0; i < records.length; i++) {
                 let rec = records[i];
+                
                 if (rec.score !== prevScore) {
                     currentRank++;
                 }
-                // 500米強制第一
                 let effectiveRank = (rec.score >= 500) ? 1 : currentRank;
 
                 if (rec.name === myName && rec.score === myScore) {
@@ -639,7 +653,17 @@
             return rank;
         }
 
-        // 共用：渲染列表
+        function displayRankResult(rank) {
+            const rankDisplay = document.getElementById('rank-display');
+            if (rank > 0 && rank <= 20) {
+                rankDisplay.innerHTML = `太強了！目前排名第 <span style="font-size:2.5rem; color:#d62828; text-shadow: 2px 2px 0px #fff;">${rank}</span> 名 🏅`;
+                setTimeout(() => playWinSound(), 500);
+            } else {
+                rankDisplay.innerText = `未入前20名 (第 ${rank > 0 ? rank : '-'} 名)，請再接再厲！`;
+                rankDisplay.style.color = "#555";
+            }
+        }
+
         function renderLeaderboard(records) {
             const listContainer = document.getElementById('leaderboard-list');
             
@@ -663,7 +687,7 @@
                 let rankToShow = (rec.score >= 500) ? 1 : currentRank;
                 
                 if (displayCount >= 20) break;
-                
+
                 let rankClass = "";
                 if (rankToShow === 1) rankClass = "rank-1";
                 else if (rankToShow === 2) rankClass = "rank-2";
@@ -689,17 +713,6 @@
             listContainer.innerHTML = html;
         }
         
-        function displayRankResult(rank) {
-            const rankDisplay = document.getElementById('rank-display');
-            if (rank > 0 && rank <= 20) {
-                rankDisplay.innerHTML = `太強了！目前排名第 <span style="font-size:2.5rem; color:#d62828; text-shadow: 2px 2px 0px #fff;">${rank}</span> 名 🏅`;
-                setTimeout(() => playWinSound(), 500);
-            } else {
-                rankDisplay.innerText = `未入前20名 (第 ${rank > 0 ? rank : '-'} 名)，請再接再厲！`;
-                rankDisplay.style.color = "#555";
-            }
-        }
-
         window.closeLeaderboard = function() { document.getElementById('leaderboard-layer').classList.add('hidden'); };
 
         // --- 5. 遊戲物件類別 ---
@@ -1052,7 +1065,7 @@
             if (selectedClass === "custom") {
                 let name = customInput.value.trim();
                 if (!name) { alert("請輸入自訂姓名！"); return; }
-                currentPlayerName = "自訂: " + name;
+                currentPlayerName = name; // 自訂模式直接使用名字，不加前綴
             } else {
                 const selectedName = studentSelect.value;
                 if (!selectedName) { 
@@ -1101,6 +1114,7 @@
 
                 if (!isPlaying) return;
 
+                // --- 畫面震動效果 (最後50米) ---
                 let currentDist = Math.floor(score/5);
                 let shakeX = 0;
                 let shakeY = 0;
@@ -1112,6 +1126,7 @@
 
                 ctx.clearRect(0, 0, canvasWidth, canvasHeight);
                 
+                // 應用震動
                 ctx.save();
                 ctx.translate(shakeX, shakeY);
 
@@ -1219,6 +1234,7 @@
                 weatherSystem.update();
                 weatherSystem.draw();
 
+                // 恢復畫布狀態
                 ctx.restore();
 
                 if (isPlaying) {
@@ -1229,6 +1245,7 @@
                 let displayDist = Math.min(currentDist, targetScore);
                 document.getElementById('score-display').innerText = `距離: ${displayDist} 米`;
 
+                // 基礎速度與擾動
                 speedMultiplier = 1 + (score * 0.001); 
                 
                 if (currentDist >= 450) {
@@ -1261,6 +1278,7 @@
                 title.style.color = "#d62828"; 
                 if (currentPlayerName) {
                     scoreText.innerText = `恭喜 ${currentPlayerName} 到達了 ${targetScore} 米終點！`;
+                    // --- 儲存到排行榜 ---
                     saveRecord(currentPlayerName, targetScore);
                 } else {
                     scoreText.innerText = `恭喜你到達了 ${targetScore} 米終點！`;
