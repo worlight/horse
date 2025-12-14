@@ -219,7 +219,6 @@
             text-shadow: 2px 2px 0px rgba(255, 255, 255, 0.6);
         }
 
-        /* 學生姓名顯示 (遊戲中) */
         #player-name-display {
             position: absolute;
             bottom: 0;
@@ -243,7 +242,6 @@
             animation: breathe 5s ease-in-out infinite;
         }
 
-        /* 排名顯示文字 */
         #rank-display {
             margin-top: 15px;
             font-size: 2rem;
@@ -354,7 +352,7 @@
         .clear-btn { background: none; border: none; color: #999; font-size: 0.8rem; margin-top: 5px; cursor: pointer; text-decoration: underline; }
 
         @media (max-width: 768px) {
-            .ink-title { font-size: 2.8rem; }
+            .ink-title { font-size: 2.8rem; letter-spacing: 5px; } 
             h2 { font-size: 2rem; }
             p { font-size: 1rem; }
             .btn { font-size: 1.5rem; padding: 10px 30px; }
@@ -396,14 +394,13 @@
                     <option value="starry">繁星點點</option>
                     <option value="autumn">秋風落葉</option>
                     <option value="spring">春暖花開</option>
-                    <option value="fog">大霧迷濛</option>
                     <option value="storm">狂風暴雨</option>
                     <option value="sand">大漠風沙</option>
                     <option value="sunset">夕陽西下</option>
                 </select>
             </div>
 
-            <p style="margin-top: 20px;">點擊畫面或按空白鍵跳躍，避開障礙！</p>
+            <p style="margin-top: 20px;">奔騰500米直達終點，點擊畫面或按空白鍵跳躍，避開障礙！</p>
             
             <div class="btn-container">
                 <button id="start-btn" class="btn" onclick="window.startGame()" disabled>載入中...</button>
@@ -458,20 +455,38 @@
 
     <script>
         // --- 1. 圖片預載 ---
+        // 修正：使用 useImageAssets 標記，即使圖片失敗也能玩
         const loadedImages = { run1: new Image(), run2: new Image(), jump: new Image() };
         let imagesLoadedCount = 0;
         const totalImages = 3;
-        function checkImagesReady() {
+        let useImageAssets = true;
+
+        function checkImagesReady(isError) {
+            if (isError) useImageAssets = false;
             imagesLoadedCount++;
             if (imagesLoadedCount === totalImages) {
                 const btn = document.getElementById('start-btn');
                 if(btn) { btn.innerText = "開始奔馳"; btn.disabled = false; }
                 const status = document.getElementById('img-status');
-                if(status) { status.innerText = "圖片狀態: 載入完成"; status.style.color = "#27ae60"; }
+                if(status) {
+                    if (useImageAssets) {
+                        status.innerText = "圖片狀態: 載入完成";
+                        status.style.color = "#27ae60";
+                    } else {
+                        status.innerText = "圖片狀態: 使用內建馬匹 (圖片載入失敗)";
+                        status.style.color = "#d35400";
+                    }
+                }
             }
         }
-        loadedImages.run1.onload = checkImagesReady; loadedImages.run2.onload = checkImagesReady; loadedImages.jump.onload = checkImagesReady;
-        loadedImages.run1.src = 'horse_run1.png'; loadedImages.run2.src = 'horse_run2.png'; loadedImages.jump.src = 'horse_jump.png';
+
+        loadedImages.run1.onload = () => checkImagesReady(false); loadedImages.run1.onerror = () => checkImagesReady(true);
+        loadedImages.run2.onload = () => checkImagesReady(false); loadedImages.run2.onerror = () => checkImagesReady(true);
+        loadedImages.jump.onload = () => checkImagesReady(false); loadedImages.jump.onerror = () => checkImagesReady(true);
+        
+        loadedImages.run1.src = 'horse_run1.png';
+        loadedImages.run2.src = 'horse_run2.png';
+        loadedImages.jump.src = 'horse_jump.png';
 
         // --- 2. 全域變數與 Firebase 設定 ---
         const firebaseConfig = {
@@ -617,12 +632,11 @@
             };
         }
 
-        // Password Protection
         window.requestClearPassword = function() { document.getElementById('password-modal').classList.remove('hidden'); document.getElementById('admin-password').value = ""; document.getElementById('admin-password').focus(); };
         window.closePasswordModal = function() { document.getElementById('password-modal').classList.add('hidden'); };
         window.confirmClearLeaderboard = function() { const password = document.getElementById('admin-password').value; if (password === "grandmont") { window.performClear(); } else { alert("密碼錯誤！"); } };
 
-        // Ranking Logic
+        // --- 核心排名算法 (更新) ---
         function calculateRank(records, myName, myScore) {
             records.sort((a, b) => {
                 if (b.score !== a.score) return b.score - a.score;
@@ -638,6 +652,7 @@
                 if (rec.score !== prevScore) {
                     currentRank++;
                 }
+                // 500米一律並列第一
                 let effectiveRank = (rec.score >= 500) ? 1 : currentRank;
 
                 if (rec.name === myName && rec.score === myScore) {
@@ -649,17 +664,7 @@
             return rank;
         }
 
-        function displayRankResult(rank) {
-            const rankDisplay = document.getElementById('rank-display');
-            if (rank > 0 && rank <= 20) {
-                rankDisplay.innerHTML = `太強了！目前排名第 <span style="font-size:2.5rem; color:#d62828; text-shadow: 2px 2px 0px #fff;">${rank}</span> 名 🏅`;
-                setTimeout(() => playWinSound(), 500);
-            } else {
-                rankDisplay.innerText = `未入前20名 (第 ${rank > 0 ? rank : '-'} 名)，請再接再厲！`;
-                rankDisplay.style.color = "#555";
-            }
-        }
-
+        // --- 渲染列表算法 (更新) ---
         function renderLeaderboard(records) {
             const listContainer = document.getElementById('leaderboard-list');
             
@@ -682,7 +687,8 @@
                 
                 let rankToShow = (rec.score >= 500) ? 1 : currentRank;
                 
-                if (displayCount >= 20) break; 
+                // 修改：顯示條件變更 - 只要名次 <= 20，全部顯示 (不論多少人)
+                if (rankToShow > 20) break;
 
                 let rankClass = "";
                 if (rankToShow === 1) rankClass = "rank-1";
@@ -707,6 +713,17 @@
                 html = "<div style='text-align:center; padding:20px; color:#888;'>暫無記錄</div>";
             }
             listContainer.innerHTML = html;
+        }
+
+        function displayRankResult(rank) {
+            const rankDisplay = document.getElementById('rank-display');
+            if (rank > 0 && rank <= 20) {
+                rankDisplay.innerHTML = `太強了！目前排名第 <span style="font-size:2.5rem; color:#d62828; text-shadow: 2px 2px 0px #fff;">${rank}</span> 名 🏅`;
+                setTimeout(() => playWinSound(), 500);
+            } else {
+                rankDisplay.innerText = `未入前20名 (第 ${rank > 0 ? rank : '-'} 名)，請再接再厲！`;
+                rankDisplay.style.color = "#555";
+            }
         }
         
         window.closeLeaderboard = function() { document.getElementById('leaderboard-layer').classList.add('hidden'); };
@@ -765,12 +782,12 @@
         class WeatherParticle {
             constructor(type) {
                 this.type = type; this.x = Math.random() * (canvasWidth + 200); this.y = Math.random() * canvasHeight;
-                if (type === 'rain' || type === 'storm') { this.vy = Math.random() * 15 + 15; this.vx = -4; this.length = Math.random() * 20 + 20; if(type==='storm'){ this.vx = -15; this.vy = 25; } }
+                if (type === 'rain') { this.vy = Math.random() * 15 + 15; this.vx = -4; this.length = Math.random() * 20 + 20; }
                 else if (type === 'snow') { this.vy = Math.random() * 3 + 2; this.vx = Math.random() * 2 - 1; this.size = Math.random() * 4 + 2; this.swing = Math.random() * Math.PI * 2; }
                 else if (type === 'autumn') { this.vy = Math.random() * 2 + 1; this.vx = Math.random() * -3 - 2; this.size = Math.random() * 6 + 4; this.rotation = Math.random() * 360; this.rotationSpeed = Math.random() * 4 - 2; const colors = ['rgba(160, 82, 45, 0.8)', 'rgba(205, 92, 92, 0.8)', 'rgba(218, 165, 32, 0.8)']; this.color = colors[Math.floor(Math.random() * colors.length)]; }
-                else if (type === 'spring') { this.vy = Math.random() * 2 + 1; this.vx = Math.random() * -2 - 1; this.size = Math.random() * 4 + 3; this.rotation = Math.random() * 360; this.rotationSpeed = Math.random() * 5 - 2.5; this.color = 'rgba(255, 183, 197, 0.8)'; }
+                // 修改：春暖花開為櫻花粉
+                else if (type === 'spring') { this.vy = Math.random() * 2 + 1; this.vx = Math.random() * -2 - 1; this.size = Math.random() * 5 + 3; this.rotation = Math.random() * 360; this.rotationSpeed = Math.random() * 3 - 1.5; this.color = 'rgba(255, 183, 197, 0.95)'; } 
                 else if (type === 'sand') { this.vx = -Math.random() * 15 - 10; this.vy = Math.random() * 2 - 1; this.size = Math.random() * 2 + 1; this.color = 'rgba(194, 178, 128, 0.6)'; }
-                else if (type === 'fog') { this.vx = -Math.random() * 2 - 1; this.vy = 0; this.size = Math.random() * 50 + 20; this.color = 'rgba(255, 255, 255, 0.05)'; }
                 else if (type === 'night' || type === 'starry') { 
                     this.isStar = (type === 'starry'); 
                     this.vx = this.isStar ? 0 : Math.random() * 2 - 1; 
@@ -778,7 +795,7 @@
                     this.size = Math.random() * 3 + 1; 
                     this.alpha = Math.random(); 
                     this.alphaSpeed = 0.02; 
-                    if(this.isStar) this.y = Math.random() * (groundHeight * 0.6); // Only top sky
+                    if(this.isStar) this.y = Math.random() * (groundHeight * 0.6); 
                 }
             }
             update() {
@@ -788,7 +805,7 @@
                 } else if (this.type === 'spring' || this.type === 'autumn') {
                     this.x += this.vx; this.y += this.vy; this.rotation += this.rotationSpeed;
                     if (this.y > canvasHeight || this.x < -50) { this.y = -20; this.x = Math.random() * (canvasWidth + 200); }
-                } else if (this.type === 'sand' || this.type === 'fog') {
+                } else if (this.type === 'sand') {
                     this.x += this.vx;
                     if (this.x < -50) this.x = canvasWidth + 50;
                 } else {
@@ -799,10 +816,10 @@
                 }
             }
             draw() {
-                if (this.type === 'rain' || this.type === 'storm') { ctx.strokeStyle = 'rgba(120, 130, 140, 0.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x + this.vx * 2, this.y + this.length); ctx.stroke(); }
+                if (this.type === 'rain') { ctx.strokeStyle = 'rgba(120, 130, 140, 0.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x + this.vx * 2, this.y + this.length); ctx.stroke(); }
                 else if (this.type === 'snow') { ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); }
                 else if (this.type === 'autumn' || this.type === 'spring') { ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.rotation * Math.PI / 180); ctx.fillStyle = this.color; ctx.beginPath(); ctx.ellipse(0, 0, this.size, this.size/2, 0, 0, Math.PI*2); ctx.fill(); ctx.restore(); }
-                else if (this.type === 'sand' || this.type === 'fog') { ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); }
+                else if (this.type === 'sand') { ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); }
                 else if (this.type === 'night' || this.type === 'starry') { let color = this.isStar ? `rgba(255, 255, 230, ${this.alpha})` : `rgba(200, 255, 100, ${this.alpha})`; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); if(!this.isStar) { ctx.fillStyle = `rgba(200, 255, 100, ${this.alpha * 0.3})`; ctx.beginPath(); ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2); ctx.fill(); } }
             }
         }
@@ -818,7 +835,6 @@
                     if (this.type === 'starry') count = 100; 
                     if (this.type === 'autumn' || this.type === 'spring') count = 40;
                     if (this.type === 'sand') count = 150;
-                    if (this.type === 'fog') count = 40;
                     for(let i=0; i<count; i++) { this.particles.push(new WeatherParticle(this.type)); }
                 }
             }
@@ -850,13 +866,9 @@
             constructor() {
                 this.mountains = []; let currentX = 0; while (currentX < canvasWidth + 500) { this.addMountain(currentX); let lastM = this.mountains[this.mountains.length - 1]; currentX = lastM.x + lastM.width - 100; }
                 this.clouds = []; 
-                
-                // 雲量控制 (星空模式少雲)
                 let cloudCount = 5;
                 if(weatherSystem.type === 'starry' || weatherSystem.type === 'night' || weatherSystem.type === 'sand') cloudCount = 1;
-                
                 for(let i=0; i<cloudCount; i++) this.clouds.push(new Cloud());
-                
                 this.bamboos = []; for(let i=0; i<12; i++) this.bamboos.push(new Bamboo());
                 this.birds = []; for(let i=0; i<3; i++) this.birds.push(new Bird());
             }
@@ -873,34 +885,32 @@
                 else if (weatherSystem.type === 'snow') bgColor = '#dbe4eb'; 
                 else if (weatherSystem.type === 'night' || weatherSystem.type === 'starry') bgColor = '#7f8fa6'; 
                 else if (weatherSystem.type === 'autumn') bgColor = '#fdf5e6';
-                else if (weatherSystem.type === 'spring') bgColor = '#fff0f5'; // Lavender Blush
-                else if (weatherSystem.type === 'sand') bgColor = '#f0e68c'; // Khaki
-                else if (weatherSystem.type === 'sunset') bgColor = '#ffdab9'; // Peach Puff
+                else if (weatherSystem.type === 'spring') bgColor = '#fff0f5'; 
+                else if (weatherSystem.type === 'sand') bgColor = '#f0e68c'; 
+                else if (weatherSystem.type === 'sunset') bgColor = '#ffdab9'; 
 
-                // Sunset Gradient
                 if(weatherSystem.type === 'sunset') {
                     let grd = ctx.createLinearGradient(0, 0, 0, canvasHeight);
                     grd.addColorStop(0, "#ff7e5f");
                     grd.addColorStop(1, "#feb47b");
                     ctx.fillStyle = grd;
+                } else if(weatherSystem.type === 'sunny') {
+                    ctx.fillStyle = '#87CEEB'; // Sky Blue
                 } else {
                     ctx.fillStyle = bgColor; 
                 }
                 ctx.fillRect(0, 0, canvasWidth, groundHeight);
                 
-                if (weatherSystem.type === 'fog') { ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.fillRect(0, 0, canvasWidth, canvasHeight); }
                 if (weatherSystem.type === 'storm' && Math.random() < 0.05) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvasWidth, canvasHeight); ctx.fillStyle = bgColor; }
                 
                 if (weatherSystem.type === 'night' || weatherSystem.type === 'starry') { ctx.fillStyle = '#fdfbf7'; ctx.beginPath(); ctx.arc(canvasWidth * 0.8, canvasHeight * 0.2, 30, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; ctx.beginPath(); ctx.arc(canvasWidth * 0.8, canvasHeight * 0.2, 45, 0, Math.PI*2); ctx.fill(); }
-                else if (weatherSystem.type !== 'rain' && weatherSystem.type !== 'storm' && weatherSystem.type !== 'sand' && weatherSystem.type !== 'fog') { 
-                    // Sun
+                else if (weatherSystem.type !== 'rain' && weatherSystem.type !== 'storm' && weatherSystem.type !== 'sand') { 
                     if (weatherSystem.type === 'autumn') ctx.fillStyle = '#e17055'; else ctx.fillStyle = '#b33939'; 
                     ctx.beginPath(); ctx.arc(canvasWidth * 0.8, canvasHeight * 0.2, 40, 0, Math.PI*2); ctx.fill(); 
                 }
                 
                 this.clouds.forEach(c => c.draw()); 
                 
-                // Mountains
                 this.mountains.forEach(m => { 
                     if (weatherSystem.type === 'night' || weatherSystem.type === 'starry') ctx.fillStyle = `rgba(20, 30, 40, ${m.opacity + 0.2})`; 
                     else if (weatherSystem.type === 'sand') ctx.fillStyle = `rgba(139, 69, 19, ${m.opacity + 0.1})`;
@@ -931,7 +941,7 @@
                 this.jumpStrength = -28; 
                 this.isJumping = false;
                 this.frame = 0;
-                this.useImage = true;
+                this.useImage = useImageAssets; // 使用全域標記
                 this.runImg1 = loadedImages.run1;
                 this.runImg2 = loadedImages.run2;
                 this.jumpImg = loadedImages.jump;
@@ -940,20 +950,24 @@
             update() { this.vy += this.weight; this.y += this.vy; if (this.y > groundHeight - this.height) { this.y = groundHeight - this.height; this.vy = 0; this.isJumping = false; } this.frame++; }
             draw() {
                 try {
-                    ctx.save(); 
-                    let currentImg; 
-                    if (this.isJumping) { currentImg = this.jumpImg; } else { currentImg = (Math.floor(this.frame / 6) % 2 === 0) ? this.runImg1 : this.runImg2; }
-                    
-                    if (currentImg && currentImg.complete && currentImg.naturalWidth > 0) { 
-                        let drawW = 150; let drawH = 150 * (currentImg.height / currentImg.width); 
-                        if (!isFinite(drawH)) drawH = 100; 
-                        let drawY = this.y - 30; 
-                        let bounce = this.isJumping ? 0 : Math.sin(this.frame * 0.8) * 3; 
-                        ctx.drawImage(currentImg, this.x, drawY + bounce, drawW, drawH); 
-                    } else { 
-                        this.drawVectorHorse(); 
-                    } 
-                    ctx.restore();
+                    if(this.useImage) {
+                        ctx.save(); 
+                        let currentImg; 
+                        if (this.isJumping) { currentImg = this.jumpImg; } else { currentImg = (Math.floor(this.frame / 6) % 2 === 0) ? this.runImg1 : this.runImg2; }
+                        
+                        if (currentImg && currentImg.complete && currentImg.naturalWidth > 0) { 
+                            let drawW = 150; let drawH = 150 * (currentImg.height / currentImg.width); 
+                            if (!isFinite(drawH)) drawH = 100; 
+                            let drawY = this.y - 30; 
+                            let bounce = this.isJumping ? 0 : Math.sin(this.frame * 0.8) * 3; 
+                            ctx.drawImage(currentImg, this.x, drawY + bounce, drawW, drawH); 
+                        } else { 
+                            this.drawVectorHorse(); 
+                        } 
+                        ctx.restore();
+                    } else {
+                        this.drawVectorHorse();
+                    }
                 } catch (e) { 
                     console.error("Draw error:", e);
                     this.drawVectorHorse(); 
@@ -980,6 +994,7 @@
         class Obstacle {
             constructor() {
                 this.width = Math.random() * 30 + 30; let currentDist = Math.floor(score/5);
+                
                 if (currentDist >= 450) {
                     // 極限階段：高度提升 (50-80)
                     this.height = Math.random() * 30 + 50; 
@@ -989,6 +1004,7 @@
                 } else {
                     this.height = Math.random() * 25 + 25; 
                 }
+                
                 this.x = canvasWidth;
                 this.y = groundHeight - this.height;
                 this.markedForDeletion = false;
@@ -1138,7 +1154,7 @@
 
             let type = forceType;
             if (!type || type === 'random') {
-                const weathers = ['sunny', 'rain', 'snow', 'night', 'autumn']; 
+                const weathers = ['sunny', 'rain', 'snow', 'night', 'autumn', 'storm', 'sand', 'sunset', 'starry']; 
                 type = weathers[Math.floor(Math.random() * weathers.length)];
             }
             console.log("Current Weather:", type);
@@ -1420,7 +1436,25 @@
         }
 
         function handleInput(e) {
+            // Special handling for Enter key
+            if (e.key === 'Enter') {
+                if (e.target.id === 'admin-password') {
+                    window.confirmClearLeaderboard();
+                    return;
+                }
+                if (e.target.id === 'custom-name-input') {
+                     window.startGame();
+                     return;
+                }
+                // General Enter to start
+                if (!document.getElementById('start-screen').classList.contains('hidden')) {
+                    window.startGame();
+                    return;
+                }
+            }
+
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            
             if (e.code === 'Space' || e.key === ' ') {
                 e.preventDefault();
             }
